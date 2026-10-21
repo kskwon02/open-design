@@ -36,10 +36,10 @@
   },
   "devDependencies": {
     "@types/node": "24.12.2",
-    "electron": "41.3.0",
-    "esbuild": "0.28.0",
+    "electron": "42.11.18",
+    "esbuild": "0.28.2",
     "typescript": "6.0.3",
-    "vitest": "4.1.6"
+    "vitest": "4.1.12"
   },
   "engines": {
     "node": "~24"
