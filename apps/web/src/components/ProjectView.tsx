@@ -2745,6 +2745,12 @@ export function ProjectView({
   // attach the runId to.
   const [messagesInitialized, setMessagesInitialized] = useState(false);
   const [previewComments, setPreviewComments] = useState<PreviewComment[]>([]);
+  const [previewCommentsState, setPreviewCommentsState] = useState<'loading' | 'error' | 'success'>('loading');
+  const previewCommentsIdentityRef = useRef('');
+  const previewCommentsReadSeq = useRef(0);
+  const currentCommentsIdentity = `${project.id}\u0000${activeConversationId}\u0000${projectRunAuthorityKey}`;
+  const visiblePreviewComments = previewCommentsIdentityRef.current === currentCommentsIdentity ? previewComments : [];
+  const visiblePreviewCommentsState = previewCommentsIdentityRef.current === currentCommentsIdentity ? previewCommentsState : 'loading';
   // Every local comment commit invalidates older in-flight list reads. The
   // initial read and the SSE/poll refresher use the same generation as a
   // commit witness, so a slow response can never resurrect a locally deleted
@@ -4153,6 +4159,9 @@ export function ProjectView({
   // conversation switches.
   useEffect(() => {
     if (!activeConversationId) {
+      ++previewCommentsReadSeq.current;
+      previewCommentsIdentityRef.current = '';
+      setPreviewCommentsState('loading');
       setMessages([]);
       setMessagesInitialized(false);
       commitPreviewComments([]);
@@ -4231,7 +4240,15 @@ export function ProjectView({
       setArtifact(null);
       savedArtifactRef.current = null;
     }
+    const commentIdentity = `${project.id}\u0000${activeConversationId}\u0000${projectRunAuthorityKey}`;
+    if (previewCommentsIdentityRef.current !== commentIdentity) {
+      previewCommentsIdentityRef.current = commentIdentity;
+      commitPreviewComments([]);
+      setAttachedComments([]);
+    }
+    setPreviewCommentsState('loading');
     const commentsGeneration = previewCommentsGenerationRef.current;
+    const commentsReadSeq = ++previewCommentsReadSeq.current;
     if (!reloadingCurrentConversation && !preservingLiveConversation && !preservingLoadedTranscript) {
       messagesConversationIdRef.current = null;
       messagesAuthorityKeyRef.current = null;
@@ -4249,11 +4266,11 @@ export function ProjectView({
           activeConversationId,
           requestWorkspaceContext,
         ).then((comments) => {
-          if (cancelled || previewCommentsGenerationRef.current !== commentsGeneration) return;
-          setPreviewComments((current) => reconcilePreviewComments(current, comments));
+          if (cancelled || previewCommentsReadSeq.current !== commentsReadSeq) return;
+          setPreviewCommentsState('success');
+          if (previewCommentsGenerationRef.current === commentsGeneration) setPreviewComments((current) => reconcilePreviewComments(current, comments));
         }).catch(() => {
-          if (cancelled || previewCommentsGenerationRef.current !== commentsGeneration) return;
-          if (!reloadingCurrentConversation) setPreviewComments([]);
+          if (!cancelled && previewCommentsReadSeq.current === commentsReadSeq) setPreviewCommentsState('error');
         });
         const list = await loadConversationTranscript(
           project.id,
@@ -6357,17 +6374,18 @@ export function ProjectView({
   const readPreviewCommentsOnce = useCallback(async () => {
     if (!activeConversationId) return;
     const commentsGeneration = ++previewCommentsGenerationRef.current;
-    const next = await fetchPreviewComments(
-      project.id,
-      activeConversationId,
-      projectRunWorkspaceContext,
-      true,
-    );
-    if (previewCommentsGenerationRef.current !== commentsGeneration) return;
-    // Unchanged comments keep their objects and an unchanged list keeps its
-    // array, so a refresh that found nothing new does not re-render.
-    setPreviewComments((current) => reconcilePreviewComments(current, next));
-    setAttachedComments((current) => reconcileAttachedComments(current, next));
+    const commentsReadSeq = ++previewCommentsReadSeq.current;
+    setPreviewCommentsState('loading');
+    try {
+      const next = await fetchPreviewComments(project.id, activeConversationId, projectRunWorkspaceContext, true);
+      if (previewCommentsReadSeq.current !== commentsReadSeq) return;
+      setPreviewCommentsState('success');
+      if (previewCommentsGenerationRef.current !== commentsGeneration) return;
+      setPreviewComments((current) => reconcilePreviewComments(current, next));
+      setAttachedComments((current) => reconcileAttachedComments(current, next));
+    } catch {
+      if (previewCommentsReadSeq.current === commentsReadSeq) setPreviewCommentsState('error');
+    }
   }, [project.id, activeConversationId, projectRunWorkspaceContext]);
   const refreshPreviewComments = useCallback(
     () => runPreviewCommentsRead(
@@ -14229,7 +14247,7 @@ export function ProjectView({
               projectResolvedDir={projectDetail.resolvedDir}
               skills={skills}
               onEnsureProject={handleEnsureProject}
-              previewComments={previewComments}
+              previewComments={visiblePreviewComments}
               attachedComments={attachedComments}
               onAttachComment={attachPreviewComment}
               onDetachComment={detachPreviewComment}
@@ -14560,7 +14578,9 @@ export function ProjectView({
           designSystemActivityEvents={designSystemActivityEvents}
           tabsState={openTabsState}
           onTabsStateChange={persistTabsState}
-          previewComments={previewComments}
+          previewComments={visiblePreviewComments}
+          previewCommentsState={visiblePreviewCommentsState}
+          onRetryPreviewComments={refreshPreviewComments}
           onSavePreviewComment={savePreviewComment}
           onRemovePreviewComment={removePreviewComment}
           onReorderPreviewComment={reorderPreviewComment}

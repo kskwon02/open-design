@@ -1771,6 +1771,8 @@ interface Props {
   commentQueueOnSend?: boolean;
   commentSendDisabled?: boolean;
   previewComments?: PreviewComment[];
+  previewCommentsState?: 'loading' | 'error' | 'success';
+  onRetryPreviewComments?: () => void;
   onSavePreviewComment?: (target: PreviewCommentTarget, note: string, attachAfterSave: boolean, images?: File[], commentId?: string) => Promise<PreviewComment | null>;
   onRemovePreviewComment?: (commentId: string) => Promise<boolean>;
   /**
@@ -1885,6 +1887,8 @@ export const FileViewer = memo(function FileViewer({
   commentQueueOnSend = false,
   commentSendDisabled = false,
   previewComments = [],
+  previewCommentsState = 'success',
+  onRetryPreviewComments,
   onSavePreviewComment,
   onRemovePreviewComment,
   onReorderPreviewComment,
@@ -2001,6 +2005,8 @@ export const FileViewer = memo(function FileViewer({
         commentQueueOnSend={commentQueueOnSend}
         commentSendDisabled={commentSendDisabled}
         previewComments={previewComments}
+        previewCommentsState={previewCommentsState}
+        onRetryPreviewComments={onRetryPreviewComments}
         onSavePreviewComment={onSavePreviewComment}
         onRemovePreviewComment={onRemovePreviewComment}
         onReorderPreviewComment={onReorderPreviewComment}
@@ -4761,6 +4767,8 @@ function CommentListBody({ note, t }: { note: string; t: TranslateFn }) {
 
 export function CommentSidePanel({
   comments,
+  loadState = 'success',
+  onRetry,
   projectId,
   filePath,
   selectedIds,
@@ -4790,6 +4798,8 @@ export function CommentSidePanel({
   deckSlideCount,
 }: {
   comments: PreviewComment[];
+  loadState?: 'loading' | 'error' | 'success';
+  onRetry?: () => void;
   projectId?: string;
   /** The file currently open in the viewer, so the sync banner can scope its
    *  per-file backfill answer. Absent means "don't ask for backfill status"
@@ -5026,7 +5036,12 @@ export function CommentSidePanel({
           setDragState(null);
         }}
       >
-        {sorted.length === 0 ? (
+        {loadState === 'loading' ? <div role="status">{t('common.loading')}</div> : null}
+        {loadState === 'error' ? <div role="alert">
+          {t('chat.comments.loadFailed')}
+          {onRetry ? <button type="button" onClick={onRetry}>{t('preview.retry')}</button> : null}
+        </div> : null}
+        {sorted.length === 0 && loadState === 'success' ? (
           <div className="comment-side-empty">
             {t('chat.comments.emptySaved')}
           </div>
@@ -5276,6 +5291,8 @@ export function computeReorderedSortKey(
 
 function CommentSideDock({
   comments,
+  loadState = 'success',
+  onRetry,
   projectId,
   filePath,
   selectedIds,
@@ -5305,6 +5322,8 @@ function CommentSideDock({
   deckSlideCount,
 }: {
   comments: PreviewComment[];
+  loadState?: 'loading' | 'error' | 'success';
+  onRetry?: () => void;
   projectId?: string;
   filePath?: string;
   selectedIds: Set<string>;
@@ -5343,6 +5362,8 @@ function CommentSideDock({
     >
       <CommentSidePanel
         comments={comments}
+        loadState={loadState}
+        onRetry={onRetry}
         projectId={projectId}
         filePath={filePath}
         selectedIds={selectedIds}
@@ -7248,6 +7269,8 @@ function HtmlViewer({
   commentQueueOnSend = false,
   commentSendDisabled = false,
   previewComments = [],
+  previewCommentsState = 'success',
+  onRetryPreviewComments,
   onSavePreviewComment,
   onRemovePreviewComment,
   onReorderPreviewComment,
@@ -7299,6 +7322,8 @@ function HtmlViewer({
   commentQueueOnSend?: boolean;
   commentSendDisabled?: boolean;
   previewComments?: PreviewComment[];
+  previewCommentsState?: 'loading' | 'error' | 'success';
+  onRetryPreviewComments?: () => void;
   onSavePreviewComment?: (target: PreviewCommentTarget, note: string, attachAfterSave: boolean, images?: File[], commentId?: string) => Promise<PreviewComment | null>;
   onRemovePreviewComment?: (commentId: string) => Promise<boolean>;
   onReorderPreviewComment?: (commentId: string, sortKey: number) => Promise<void>;
@@ -8239,8 +8264,8 @@ function HtmlViewer({
     // Sharing publishes authored bytes, independently of comment identity setup
     // and its preview witness. Never prepare/mutate source as a side effect.
     // Retained share-plan callbacks must still reject stale or unsettled edits.
-    if (guardShareSource && mode !== 'resume' && !shareSourceGuard.canPublish()) {
-      setPublishFailureKey('fileViewer.publishFileFailed');
+    if (guardShareSource && mode !== 'resume' && (!shareSourceGuard.canPublish() || manualEditTextSessionIdRef.current || manualEditTextCommitInFlightRef.current || manualEditPendingStyleRef.current || manualEditSavingRef.current)) {
+      setPublishFailureKey('fileViewer.shareFinishEditing');
       return;
     }
     publicFileStateReadRef.current = null;
@@ -8356,8 +8381,8 @@ function HtmlViewer({
     if (!shareSourceGuard.isCurrent()) return;
     if (!canPublishPublic || streaming || viewerOnly || !publishedFileSlug || publishingPublicFile
       || updateInFlightRef.current || (fileShareFreshness !== 'outdated' && !publishFailureKey) || fileShareStatus !== 'active') return;
-    if (guardShareSource && !shareSourceGuard.canPublish()) {
-      setPublishFailureKey('fileViewer.publishFileFailed');
+    if (guardShareSource && (!shareSourceGuard.canPublish() || manualEditTextSessionIdRef.current || manualEditTextCommitInFlightRef.current || manualEditPendingStyleRef.current || manualEditSavingRef.current)) {
+      setPublishFailureKey('fileViewer.shareFinishEditing');
       return;
     }
     publicFileStateReadRef.current = null;
@@ -8652,7 +8677,7 @@ function HtmlViewer({
   const [commentReadState, setCommentReadState] = useState<ProjectCommentReadState | null>(null);
   // The marker is scoped to the authenticated account as well as the project.
   // A late response from a previous account must never become this viewer's state.
-  const commentReadScopeKey = `${projectId}\u0000${workspaceAccountScopedCacheKey(workspaceContext)}`;
+  const commentReadScopeKey = `${projectId}\u0000${file.name}\u0000${workspaceAccountScopedCacheKey(workspaceContext)}`;
   const commentReadScopeRef = useRef(commentReadScopeKey);
   const commentPanelToggleRef = useRef<HTMLButtonElement | null>(null);
   const commentPanelReturnFocusRef = useRef<HTMLElement | null>(null);
@@ -12752,7 +12777,7 @@ function HtmlViewer({
         && missingCommentLocation.intent === commentLocationIntent)) ? selectedLocationComment.id : null;
   const guardShareSource = workspaceActive && !viewerOnly && Boolean(workspaceContext?.permissions.canWriteSyncedFiles)
     && !needsPowered && !passiveLargeHtmlPreview && liveHtml === undefined;
-  const shareSourceSettled = !streaming && !manualEditMode && !manualEditDraftDirty
+  const shareSourceSettled = !streaming && !manualEditDraftDirty
     && !manualEditSaving && !manualEditEntryHandoffPending && !manualEditExitHandoffPending
     && !manualEditPendingStyleRef.current && !inspectMode && !savingInspect && !drawOverlayOpen
     // Publication reads saved disk contents. Comment drafts and preview
@@ -12922,6 +12947,7 @@ function HtmlViewer({
       filePath: file.name,
       elementId: String(data.elementId || ''),
       selector: String(data.selector || ''),
+      domSelector: typeof data.domSelector === 'string' ? data.domSelector : undefined,
       label: String(data.label || ''),
       text: String(data.text || ''),
       position: {
@@ -13001,7 +13027,9 @@ function HtmlViewer({
         if (!snapshot.elementId || !isValidCommentOverlayPosition(snapshot.position)) return;
         if (commentUsesIdentity({ elementId: request.targetId ?? '', selector: request.selector })
           && (!request.targetId || snapshot.elementId !== request.targetId || snapshot.selector !== request.selector)) return;
-        if (snapshot.elementId !== request.targetId && !commentSelectorsMatch(snapshot.selector, request.selector)) return;
+        if (snapshot.elementId !== request.targetId && !commentSelectorsMatch(snapshot.selector, request.selector)
+          && !commentSelectorsMatch(snapshot.domSelector ?? '', request.selector)) return;
+        const previousTargetId = request.targetId;
         request.targetId = snapshot.elementId;
         // A tagged reply acknowledges srcDoc's completed locate/scroll. Later
         // tracking updates must not trigger the URL bridge's initial scroll.
@@ -13009,7 +13037,13 @@ function HtmlViewer({
         setMissingCommentLocation(null);
         setActiveCommentTarget(snapshot);
         setHoveredCommentTarget(snapshot);
-        setLiveCommentTargets(current => new Map(current).set(snapshot.elementId, snapshot));
+        setLiveCommentTargets(current => {
+          const next = new Map(current);
+          // A successful tagged locate supersedes the old target in this same
+          // render. Do not let the saved pin use stale coordinates until refresh.
+          if (previousTargetId && previousTargetId !== snapshot.elementId) next.delete(previousTargetId);
+          return next.set(snapshot.elementId, snapshot);
+        });
         return;
       }
       if (data.type === 'od:comment-active-target-update') {
@@ -13019,7 +13053,11 @@ function HtmlViewer({
         // URL previews still use the daemon's existing bridge. It reports DOM
         // boxes without request ids; match the current target and use its
         // existing scroll protocol, without changing daemon or its contract.
-        if (request && request.previewKey === commentTargetsKey && snapshot.elementId === request.targetId) {
+        const previousTargetId = request?.targetId;
+        const matchesRequest = request && request.previewKey === commentTargetsKey
+          && (snapshot.elementId === request.targetId || commentSelectorsMatch(snapshot.domSelector ?? '', request.selector));
+        if (matchesRequest) {
+          request.targetId = snapshot.elementId;
           setMissingCommentLocation(null);
           const height = iframeRef.current?.clientHeight ?? 0;
           if (!request.scrolled && height > 0) {
@@ -13041,7 +13079,9 @@ function HtmlViewer({
         setLiveCommentTargets((current) => {
           const existing = current.get(snapshot.elementId);
           if (existing && commentSnapshotEqual(existing, snapshot)) return current;
-          return new Map(current).set(snapshot.elementId, snapshot);
+          const next = new Map(current);
+          if (matchesRequest && previousTargetId && previousTargetId !== snapshot.elementId) next.delete(previousTargetId);
+          return next.set(snapshot.elementId, snapshot);
         });
         setActiveCommentTarget((current) =>
           current && current.elementId === snapshot.elementId && !commentSnapshotEqual(current, snapshot)
@@ -16447,49 +16487,55 @@ function HtmlViewer({
     [unreadSideComments],
   );
   const mergeReadState = useCallback((scopeKey: string, state: ProjectCommentReadState) => {
-    if (commentReadScopeRef.current !== scopeKey || state.projectId !== projectId) return;
+    if (commentReadScopeRef.current !== scopeKey || state.projectId !== projectId || state.filePath !== file.name) return;
     setCommentReadState((current) => {
-      if (!current || current.projectId !== state.projectId) return state;
+      if (!current || current.projectId !== state.projectId || current.filePath !== state.filePath) return state;
+      if (state.seenCommentIds) return { ...state, seenCommentIds: [...new Set([...(current.seenCommentIds ?? []), ...state.seenCommentIds])] };
       const currentReadAt = current.lastReadAt ?? Number.NEGATIVE_INFINITY;
       const nextReadAt = state.lastReadAt ?? Number.NEGATIVE_INFINITY;
       return nextReadAt > currentReadAt ? state : current;
     });
-  }, [projectId]);
+  }, [projectId, file.name]);
   useEffect(() => {
     const scopeKey = commentReadScopeKey;
     commentReadScopeRef.current = scopeKey;
     setCommentReadState(null);
     let cancelled = false;
-    void fetch(`/api/projects/${encodeURIComponent(projectId)}/comments/read`, {
+    void fetch(`/api/projects/${encodeURIComponent(projectId)}/comments/read?filePath=${encodeURIComponent(file.name)}`, {
       headers: workspaceContext ? workspaceProjectHeaders(workspaceContext) : undefined,
     }).then(async (response) => {
       if (!response.ok || cancelled) return;
       mergeReadState(scopeKey, await response.json() as ProjectCommentReadState);
     }).catch(() => undefined);
     return () => { cancelled = true; };
-  }, [commentReadScopeKey, mergeReadState, projectId, workspaceContext]);
+  }, [commentReadScopeKey, mergeReadState, projectId, file.name, workspaceContext]);
   useEffect(() => {
-    if (!commentPanelOpen || commentSidePanelCollapsed) return;
+    if (!commentPanelOpen || commentSidePanelCollapsed || previewCommentsState !== 'success') return;
     const scopeKey = commentReadScopeKey;
     let cancelled = false;
-    // The daemon clamps this client timestamp and returns its authoritative,
-    // monotonic marker. Do not optimistically commit a browser clock value:
-    // a future clock or failed PUT must not hide comments.
-    void fetch(`/api/projects/${encodeURIComponent(projectId)}/comments/read`, {
-      method: 'PUT',
-      headers: { 'content-type': 'application/json', ...(workspaceContext ? workspaceProjectHeaders(workspaceContext) : {}) },
-      body: JSON.stringify({ readAt: Date.now() }),
-    }).then(async (response) => {
-      if (!response.ok || cancelled) return;
-      mergeReadState(scopeKey, await response.json() as ProjectCommentReadState);
-    }).catch(() => undefined);
-    return () => { cancelled = true; };
-  }, [commentPanelOpen, commentReadScopeKey, commentSidePanelCollapsed, latestVisibleSideCommentCreatedAt, mergeReadState, projectId, workspaceContext]);
+    // A committed visible list, not opening the panel or the client's clock,
+    // is the acknowledgement boundary. Older comments arriving later stay unread.
+    const ids = unreadSideComments.filter(comment => !commentReadState?.seenCommentIds?.includes(comment.id)).map(comment => comment.id).slice(0, 500);
+    if (!ids.length) return;
+    const frame = requestAnimationFrame(() => {
+      if (document.visibilityState === 'hidden') return;
+      void fetch(`/api/projects/${encodeURIComponent(projectId)}/comments/read`, {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json', ...(workspaceContext ? workspaceProjectHeaders(workspaceContext) : {}) },
+        body: JSON.stringify({ readAt: latestVisibleSideCommentCreatedAt, filePath: file.name, commentIds: ids }),
+      }).then(async (response) => {
+        if (!response.ok || cancelled) return;
+        mergeReadState(scopeKey, await response.json() as ProjectCommentReadState);
+      }).catch(() => undefined);
+    });
+    return () => { cancelled = true; cancelAnimationFrame(frame); };
+  }, [unreadSideComments, commentReadState, file.name, previewCommentsState, commentPanelOpen, commentReadScopeKey, commentSidePanelCollapsed, latestVisibleSideCommentCreatedAt, mergeReadState, projectId, workspaceContext]);
   // Trusted current member/app-account identities are filtered above. Never
   // fabricate an authorKey from names, colors, or either identity namespace.
   const hasUnreadSideComments = hasUnreadComments({
     readState: commentReadState,
     comments: unreadSideComments.map((comment) => ({
+      id: comment.id,
       createdAt: comment.createdAt,
       author: { authorKey: comment.authorKey },
     })),
@@ -17033,6 +17079,8 @@ function HtmlViewer({
   const commentSidePanel = workspaceActive && commentPanelOpen ? (
     <CommentSideDock
       comments={visibleSideComments}
+      loadState={previewCommentsState}
+      onRetry={onRetryPreviewComments}
       projectId={projectId}
       filePath={file.path || file.name}
       deckSlideCount={effectiveDeck ? slideState?.count : undefined}

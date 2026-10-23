@@ -2094,6 +2094,7 @@ function meaningfulDomFallbackTarget(el) {
     if (!elementVisibleForComment(el, position)) return null;
     var payload = {
       type: 'od:comment-target',
+      domSelector: domSelectorFor(el),
       elementId: id,
       selector: selector,
       label: tag + cls,

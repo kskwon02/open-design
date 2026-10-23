@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import type { ComponentProps } from 'react';
+import { cloneElement, type ComponentProps } from 'react';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ProjectView } from '../../src/components/ProjectView';
@@ -199,4 +199,64 @@ describe('ProjectView preview comment save feedback', () => {
     }
   });
 
+});
+
+it('OPEND-3894 retains same-scope rows on failed refresh and accepts a successful empty retry', async () => {
+
+  const projectId = 'read-project'; const conversationId = 'read-conversation';
+  listConversations.mockResolvedValue([{id:conversationId,title:'Comments'}]);
+  listMessages.mockResolvedValue([]); loadTabs.mockResolvedValue({tabs:[],activeTabId:null});
+  fetchProjectFiles.mockResolvedValue([]); fetchLiveArtifacts.mockResolvedValue([]);
+  fetchSkill.mockResolvedValue(null); fetchDesignSystem.mockResolvedValue(null); getTemplate.mockResolvedValue(null);
+  listActiveChatRuns.mockResolvedValue([]); globalThis.fetch = vi.fn(async()=>Response.json({}));
+  const comment = {id:'saved',filePath:'index.html',note:'Keep my review',status:'open',createdAt:1,updatedAt:1};
+  fetchPreviewComments.mockResolvedValue([comment]);
+  const tree = (
+        <ProjectView
+          project={{ id: projectId, name: 'Comment copy', skillId: null, designSystemId: null } as never}
+          routeFileName={null}
+          routeConversationId={conversationId}
+          config={{ mode: 'daemon', agentId: 'agent-1', notifications: undefined, agentModels: {} } as never}
+          agents={[{ id: 'agent-1', name: 'OpenCode', models: [] } as never]}
+          skills={[]}
+          designTemplates={[]}
+          designSystems={[]}
+          daemonLive
+          onModeChange={() => {}}
+          onAgentChange={() => {}}
+          onAgentModelChange={() => {}}
+          onRefreshAgents={() => {}}
+          onOpenSettings={() => {}}
+          onBack={() => {}}
+          onClearPendingPrompt={() => {}}
+          onTouchProject={() => {}}
+          onProjectChange={() => {}}
+          onProjectsRefresh={() => {}}
+        />
+      );
+  const view = render(tree);
+
+  const preview = () => fileWorkspaceSpy.mock.calls.at(-1)?.[0] as {
+    previewComments: unknown[]; previewCommentsState: string; onRetryPreviewComments: () => Promise<void>;
+  };
+  await waitFor(()=>expect(preview().previewCommentsState).toBe('success'));
+  expect(preview().previewComments).toEqual([comment]);
+  fetchPreviewComments.mockRejectedValue(new Error('offline'));
+  await act(async()=>{await preview().onRetryPreviewComments();});
+  expect(preview().previewCommentsState).toBe('error');
+  expect(preview().previewComments).toEqual([comment]);
+  fetchPreviewComments.mockResolvedValue([]);
+  await act(async()=>{await preview().onRetryPreviewComments();});
+  expect(preview().previewCommentsState).toBe('success');
+  expect(preview().previewComments).toEqual([]);
+  let finishOldRead!: (rows: unknown[]) => void;
+  fetchPreviewComments.mockImplementationOnce(() => new Promise(resolve => { finishOldRead = resolve; }));
+  let oldRead!: Promise<void>;
+  act(() => { oldRead = preview().onRetryPreviewComments(); });
+  fetchPreviewComments.mockResolvedValue([{ ...comment, id: 'new-project-comment' }]);
+  view.rerender(cloneElement(tree, { project: { ...tree.props.project, id: 'other-project' } }));
+  expect(preview().previewComments).toEqual([]);
+  await waitFor(() => expect(preview().previewComments).toEqual([{ ...comment, id: 'new-project-comment' }]));
+  await act(async () => { finishOldRead([comment]); await oldRead; });
+  expect(preview().previewComments).toEqual([{ ...comment, id: 'new-project-comment' }]);
 });
