@@ -128,6 +128,14 @@ async function writeResponseBodyToPartial(
 }
 
 /**
+ * @internal Release an unused body before restarting or reporting an HTTP error.
+ * A cancellation failure must not replace the original transfer outcome.
+ */
+async function discardResponseBody(response: Response): Promise<void> {
+  await response.body?.cancel().catch(() => undefined);
+}
+
+/**
  * @internal Attempt to resume a partial download via a Range request.
  * @returns The attempt result, or `"restart"` when resume is not possible.
  */
@@ -147,9 +155,13 @@ async function tryResumeDownload(
       Range: `bytes=${partialBytes}-`,
     },
   });
-  if (response.status !== 206) return "restart";
+  if (response.status !== 206) {
+    await discardResponseBody(response);
+    return "restart";
+  }
   const range = parseContentRange(response.headers.get("content-range"));
   if (range == null || range.start !== partialBytes || validatorsConflict(manifest.validators, response)) {
+    await discardResponseBody(response);
     return "restart";
   }
   const totalBytes = range.totalBytes ?? manifest.totalBytes ?? partialBytes + (contentLength(response) ?? 0);
@@ -177,7 +189,10 @@ async function downloadFromZero(
 ): Promise<DownloadAttemptResult> {
   await rm(target.partialPath, { force: true }).catch(() => undefined);
   const response = await fetchImpl(target.url, { headers: requestHeaders });
-  if (!response.ok) throw new Error(`download request returned HTTP ${response.status}`);
+  if (!response.ok) {
+    await discardResponseBody(response);
+    throw new Error(`download request returned HTTP ${response.status}`);
+  }
   const totalBytes = contentLength(response);
   const validators = validatorsFromResponse(response);
   await writeJson(target.manifestPath, createManifest(target, "partial", { totalBytes, validators }));
