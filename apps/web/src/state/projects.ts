@@ -6,6 +6,7 @@
 // can stay rendered when the daemon is briefly unreachable. Reads whose empty
 // result changes behavior must preserve failure as a typed error instead.
 
+import { apiFetch } from '../runtime/web-path';
 import { coalescedGet, evictCoalescedGet } from '../lib/coalesced-get';
 import { isDaemonProxyConnectionFailure } from '../runtime/daemon-proxy-failure';
 import { BackoffController, type BackoffOptions } from '../lib/backoff';
@@ -223,7 +224,7 @@ export async function moveWorkspaceProject(input: {
 }): Promise<WorkspaceProjectSummary> {
   const context = input.workspaceContext;
   if (!context) throw new Error('Workspace context is required');
-  const resp = await fetch(
+  const resp = await apiFetch(
     `/api/workspaces/${encodeURIComponent(context.workspaceId)}/projects/${encodeURIComponent(input.projectId)}/move`,
     {
       method: 'POST',
@@ -313,7 +314,7 @@ export async function listProjects(options?: {
   // plus the requested view.
   try {
     return await coalescedGet('local-projects', async () => {
-      const resp = await fetch('/api/projects');
+      const resp = await apiFetch('/api/projects');
       // Throw inside the coalesced run so a failed read is not cached — the next
       // caller/poll retries immediately (see coalesced-get.ts).
       if (!resp.ok) throw new Error(`projects ${resp.status}`);
@@ -336,7 +337,7 @@ export async function listWorkspaceProjectSummaries(options: {
   const key = workspaceProjectListCacheKey(context, workspaceView);
   try {
     return await coalescedGet(key, async () => {
-      const resp = await fetch(
+      const resp = await apiFetch(
         `/api/workspaces/${encodeURIComponent(context.workspaceId)}/projects?view=${encodeURIComponent(workspaceView)}`,
         { headers: workspaceProjectHeaders(context) },
       );
@@ -355,7 +356,7 @@ export async function getProject(
   workspaceContext?: WorkspaceCollabContext | null,
 ): Promise<Project | null> {
   try {
-    const resp = await fetch(
+    const resp = await apiFetch(
       `/api/projects/${encodeURIComponent(id)}`,
       workspaceContext
         ? { headers: workspaceProjectHeaders(workspaceContext) }
@@ -416,7 +417,7 @@ export async function bootstrapProjectRoute(
   ].join(':');
   const result = await coalescedGet(key, async (): Promise<ProjectRouteBootstrapResult> => {
     try {
-      const scopeResponse = await fetch(
+      const scopeResponse = await apiFetch(
         `/api/projects/${encodeURIComponent(projectId)}/workspace-scope`,
         {
           cache: 'no-store',
@@ -459,7 +460,7 @@ export async function bootstrapProjectRoute(
         // fail-closed authorization lane before trusting it as ProjectView's
         // seed. This also ensures an already-known Team route never completes
         // with headerless scope as its last authorization request.
-        const exactScopeResponse = await fetch(
+        const exactScopeResponse = await apiFetch(
           `/api/projects/${encodeURIComponent(projectId)}/workspace-scope`,
           {
             cache: 'no-store',
@@ -485,7 +486,7 @@ export async function bootstrapProjectRoute(
         body = exactBody;
         context = exactContext;
       }
-      const projectResponse = await fetch(
+      const projectResponse = await apiFetch(
         `/api/projects/${encodeURIComponent(projectId)}`,
         {
           cache: 'no-store',
@@ -565,7 +566,7 @@ export async function bootstrapFirstOpenTeamProjectRoute(
   }
   let bootstrapResponse: CollabProjectBootstrapResponse;
   try {
-    const response = await fetch(
+    const response = await apiFetch(
       `/api/projects/${encodeURIComponent(projectId)}/collab/bootstrap`,
       {
         method: 'PUT',
@@ -630,7 +631,7 @@ export async function getProjectDetail(
     // before resolving it, so referencing a brand-new (empty) project yields a
     // real on-disk directory instead of a path that fails existence checks.
     const query = opts?.ensureDir ? '?ensureDir=1' : '';
-    const resp = await fetch(
+    const resp = await apiFetch(
       `/api/projects/${encodeURIComponent(id)}${query}`,
       workspaceContext
         ? { headers: workspaceProjectHeaders(workspaceContext) }
@@ -788,7 +789,7 @@ export async function createProject(
     // client-provided id is idempotent, never a duplicate project.
     const id = input.id ?? randomUUID();
     for (let attempt = 0; ; attempt += 1) {
-      const resp = await fetch('/api/projects', {
+      const resp = await apiFetch('/api/projects', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -839,7 +840,7 @@ export async function createDesignSystemProjectFromProject(
   workspaceContext?: WorkspaceCollabContext | null,
 ): Promise<CreateDesignSystemProjectFromProjectResponse> {
   try {
-    const resp = await fetch(`/api/projects/${encodeURIComponent(projectId)}/design-system-copy`, {
+    const resp = await apiFetch(`/api/projects/${encodeURIComponent(projectId)}/design-system-copy`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -879,7 +880,7 @@ export async function duplicateProject(
   workspaceContext?: WorkspaceCollabContext | null,
 ): Promise<DuplicateProjectResponse> {
   try {
-    const resp = await fetch(`/api/projects/${encodeURIComponent(projectId)}/duplicate`, {
+    const resp = await apiFetch(`/api/projects/${encodeURIComponent(projectId)}/duplicate`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -916,7 +917,7 @@ export async function duplicateProject(
 }
 
 export async function pickLocalFolderPath(): Promise<string | null> {
-  const resp = await fetch('/api/dialog/open-folder', {
+  const resp = await apiFetch('/api/dialog/open-folder', {
     method: 'POST',
   });
   if (!resp.ok) {
@@ -950,7 +951,7 @@ export async function importFolderProject(
   input: ImportFolderRequest,
   workspaceContext?: WorkspaceCollabContext | null,
 ): Promise<ImportFolderResponse> {
-  const resp = await fetch('/api/import/folder', {
+  const resp = await apiFetch('/api/import/folder', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -975,7 +976,7 @@ export async function importClaudeDesignZip(
 ): Promise<{ project: Project; conversationId: string; entryFile: string }> {
   const form = new FormData();
   form.append('file', file);
-  const resp = await fetch('/api/import/claude-design', {
+  const resp = await apiFetch('/api/import/claude-design', {
     method: 'POST',
     ...(workspaceContext ? { headers: workspaceProjectHeaders(workspaceContext) } : {}),
     body: form,
@@ -1035,7 +1036,7 @@ export async function listTemplates(): Promise<ProjectTemplate[]> {
   // next caller retries instead of joining a dead read.
   try {
     return await coalescedGet(`project-templates:${templateListMutationGeneration}`, async () => {
-      const resp = await fetch('/api/templates');
+      const resp = await apiFetch('/api/templates');
       if (!resp.ok) throw new Error(`templates ${resp.status}`);
       const json = (await resp.json()) as { templates: ProjectTemplate[] };
       return json.templates ?? [];
@@ -1047,7 +1048,7 @@ export async function listTemplates(): Promise<ProjectTemplate[]> {
 
 export async function getTemplate(id: string): Promise<ProjectTemplate | null> {
   try {
-    const resp = await fetch(`/api/templates/${encodeURIComponent(id)}`);
+    const resp = await apiFetch(`/api/templates/${encodeURIComponent(id)}`);
     if (!resp.ok) return null;
     const json = (await resp.json()) as { template: ProjectTemplate };
     return json.template;
@@ -1062,7 +1063,7 @@ export async function saveTemplate(input: {
   sourceProjectId: string;
 }): Promise<ProjectTemplate | null> {
   try {
-    const resp = await fetch('/api/templates', {
+    const resp = await apiFetch('/api/templates', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(input),
@@ -1078,7 +1079,7 @@ export async function saveTemplate(input: {
 
 export async function deleteTemplate(id: string): Promise<boolean> {
   try {
-    const resp = await fetch(`/api/templates/${encodeURIComponent(id)}`, {
+    const resp = await apiFetch(`/api/templates/${encodeURIComponent(id)}`, {
       method: 'DELETE',
     });
     if (resp.ok) noteTemplateListMutation();
@@ -1099,7 +1100,7 @@ export async function patchProject(
   workspaceContext?: WorkspaceCollabContext | null,
 ): Promise<Project | null> {
   try {
-    const resp = await fetch(`/api/projects/${encodeURIComponent(id)}`, {
+    const resp = await apiFetch(`/api/projects/${encodeURIComponent(id)}`, {
       method: 'PATCH',
       headers: {
         'Content-Type': 'application/json',
@@ -1147,7 +1148,7 @@ export async function deleteProject(
   onShareResiduals?: (rows: ReadonlyArray<ProjectDeleteShareResidual>) => void,
 ): Promise<true> {
   try {
-    const resp = await fetch(`/api/projects/${encodeURIComponent(id)}`, {
+    const resp = await apiFetch(`/api/projects/${encodeURIComponent(id)}`, {
       method: 'DELETE',
       ...(workspaceContext ? { headers: workspaceProjectHeaders(workspaceContext) } : {}),
     });
@@ -1249,7 +1250,7 @@ export async function listConversations(
     const json = await coalescedGet(
       readKey,
       async () => {
-        const resp = await fetch(
+        const resp = await apiFetch(
           `/api/projects/${encodeURIComponent(projectId)}/conversations`,
           workspaceContext
             ? { headers: workspaceProjectHeaders(workspaceContext) }
@@ -1330,7 +1331,7 @@ function postConversation(
   body: CreateConversationRequest,
   workspaceContext?: WorkspaceCollabContext | null,
 ): Promise<Response> {
-  return fetch(
+  return apiFetch(
     `/api/projects/${encodeURIComponent(projectId)}/conversations`,
     {
       method: 'POST',
@@ -1362,7 +1363,7 @@ export async function patchConversation(
   workspaceContext?: WorkspaceCollabContext | null,
 ): Promise<Conversation | null> {
   try {
-    const resp = await fetch(
+    const resp = await apiFetch(
       `/api/projects/${encodeURIComponent(projectId)}/conversations/${encodeURIComponent(conversationId)}`,
       {
         method: 'PATCH',
@@ -1388,7 +1389,7 @@ export async function deleteConversation(
   workspaceContext?: WorkspaceCollabContext | null,
 ): Promise<boolean> {
   try {
-    const resp = await fetch(
+    const resp = await apiFetch(
       `/api/projects/${encodeURIComponent(projectId)}/conversations/${encodeURIComponent(conversationId)}`,
       {
         method: 'DELETE',
@@ -1472,7 +1473,7 @@ export async function listMessages(
   signal?: AbortSignal,
 ): Promise<ChatMessage[]> {
   try {
-    const resp = await fetch(
+    const resp = await apiFetch(
       `/api/projects/${encodeURIComponent(projectId)}/conversations/${encodeURIComponent(conversationId)}/messages`,
       workspaceContext || signal
         ? {
@@ -1527,7 +1528,7 @@ export async function saveMessage(
       ...(options.telemetryFinalized ? { telemetryFinalized: true } : {}),
       ...(options.createOnly ? { createOnly: true } : {}),
     };
-    const response = await fetch(
+    const response = await apiFetch(
       `/api/projects/${encodeURIComponent(projectId)}/conversations/${encodeURIComponent(conversationId)}/messages/${encodeURIComponent(message.id)}`,
       {
         method: 'PUT',
@@ -1566,7 +1567,7 @@ export async function createTerminal(
   workspaceContext?: WorkspaceCollabContext | null,
 ): Promise<TerminalSession | null> {
   try {
-    const resp = await fetch(
+    const resp = await apiFetch(
       `/api/projects/${encodeURIComponent(projectId)}/terminals`,
       {
         method: 'POST',
@@ -1604,7 +1605,7 @@ export async function sendTerminalStdin(
   workspaceContext?: WorkspaceCollabContext | null,
 ): Promise<boolean> {
   try {
-    const resp = await fetch(
+    const resp = await apiFetch(
       `/api/projects/${encodeURIComponent(projectId)}/terminals/${encodeURIComponent(terminalId)}/stdin`,
       {
         method: 'POST',
@@ -1629,7 +1630,7 @@ export async function resizeTerminal(
   workspaceContext?: WorkspaceCollabContext | null,
 ): Promise<boolean> {
   try {
-    const resp = await fetch(
+    const resp = await apiFetch(
       `/api/projects/${encodeURIComponent(projectId)}/terminals/${encodeURIComponent(terminalId)}/resize`,
       {
         method: 'POST',
@@ -1658,7 +1659,7 @@ export async function killTerminal(
   } = {},
 ): Promise<boolean> {
   try {
-    const resp = await fetch(
+    const resp = await apiFetch(
       `/api/projects/${encodeURIComponent(projectId)}/terminals/${encodeURIComponent(terminalId)}/kill`,
       {
         method: 'POST',
@@ -1786,7 +1787,7 @@ async function persistTabsToDaemon(
     `project-tabs:${projectId}:${workspaceIdentityCacheKey(workspaceContext)}`;
   // Thin invalidation: a write makes any burst-shared read stale.
   evictCoalescedGet(requestKey);
-  await fetch(`/api/projects/${encodeURIComponent(projectId)}/tabs`, {
+  await apiFetch(`/api/projects/${encodeURIComponent(projectId)}/tabs`, {
     method: 'PUT',
     headers: {
       'Content-Type': 'application/json',
@@ -1811,7 +1812,7 @@ export async function loadTabs(
     // Concurrent mounts share one daemon read per burst (Batch A §4.3); the
     // per-caller cache reconciliation below still runs for every caller.
     const saved = await coalescedGet(requestKey, async () => {
-      const resp = await fetch(
+      const resp = await apiFetch(
         `/api/projects/${encodeURIComponent(projectId)}/tabs`,
         workspaceContext
           ? { headers: workspaceProjectHeaders(workspaceContext) }
@@ -1973,7 +1974,7 @@ export async function listPlugins(
   // contract, not a request-count change. Left for the owner of that contract
   // to decide.
   try {
-    const resp = await fetch(
+    const resp = await apiFetch(
       '/api/plugins',
       options.workspaceContext ? { headers: workspaceProjectHeaders(options.workspaceContext) } : undefined,
     );
@@ -2055,7 +2056,7 @@ export async function duplicatePluginAsProject(
   input: { name?: string } = {},
   workspaceContext?: WorkspaceCollabContext | null,
 ): Promise<PluginDuplicateProjectResponse> {
-  const resp = await fetch(
+  const resp = await apiFetch(
     `/api/plugins/${encodeURIComponent(pluginId)}/duplicate-project`,
     {
       method: 'POST',
@@ -2092,7 +2093,7 @@ export async function installPluginSource(
 ): Promise<PluginInstallOutcome> {
   const log: string[] = [];
   try {
-    const resp = await fetch('/api/plugins/install', {
+    const resp = await apiFetch('/api/plugins/install', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -2172,7 +2173,7 @@ export async function installGeneratedPluginFolder(
   const accountGeneration = currentWorkspaceAccountGeneration();
   try {
     const request: ProjectPluginFolderInstallRequest = { path: relativePath };
-    const resp = await fetch(
+    const resp = await apiFetch(
       `/api/projects/${encodeURIComponent(projectId)}/plugins/install-folder`,
       {
         method: 'POST',
@@ -2282,7 +2283,7 @@ export async function startGeneratedPluginShareTask(
   action: 'publish-github' | 'contribute-open-design',
   workspaceContext?: WorkspaceCollabContext | null,
 ): Promise<PluginShareTaskStart> {
-  const resp = await fetch(
+  const resp = await apiFetch(
     `/api/projects/${encodeURIComponent(projectId)}/plugins/share-tasks`,
     {
       method: 'POST',
@@ -2319,7 +2320,7 @@ export async function waitGeneratedPluginShareTask(
   timeoutMs = 25_000,
   workspaceContext?: WorkspaceCollabContext | null,
 ): Promise<PluginShareTaskSnapshot> {
-  const resp = await fetch(`/api/plugins/share-tasks/${encodeURIComponent(taskId)}/wait`, {
+  const resp = await apiFetch(`/api/plugins/share-tasks/${encodeURIComponent(taskId)}/wait`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -2367,7 +2368,7 @@ export async function createPluginShareProject(
   workspaceContext?: WorkspaceCollabContext | null,
 ): Promise<PluginShareProjectOutcome> {
   try {
-    const resp = await fetch(
+    const resp = await apiFetch(
       `/api/plugins/${encodeURIComponent(pluginId)}/share-project`,
       {
         method: 'POST',
@@ -2416,7 +2417,7 @@ async function postGeneratedPluginShareAction(
   workspaceContext?: WorkspaceCollabContext | null,
 ): Promise<PluginShareOutcome> {
   try {
-    const resp = await fetch(
+    const resp = await apiFetch(
       `/api/projects/${encodeURIComponent(projectId)}/plugins/${action}`,
       {
         method: 'POST',
@@ -2447,7 +2448,7 @@ async function postGeneratedPluginShareAction(
 export async function upgradePlugin(id: string): Promise<PluginInstallOutcome> {
   const log: string[] = [];
   try {
-    const resp = await fetch(`/api/plugins/${encodeURIComponent(id)}/upgrade`, {
+    const resp = await apiFetch(`/api/plugins/${encodeURIComponent(id)}/upgrade`, {
       method: 'POST',
     });
     if (!resp.ok) {
@@ -2490,7 +2491,7 @@ export async function upgradePlugin(id: string): Promise<PluginInstallOutcome> {
 
 async function postPluginUpload(url: string, form: FormData): Promise<PluginInstallOutcome> {
   try {
-    const resp = await fetch(url, {
+    const resp = await apiFetch(url, {
       method: 'POST',
       body: form,
     });
@@ -2568,7 +2569,7 @@ export async function uninstallPlugin(
   workspaceContext?: WorkspaceCollabContext | null,
 ): Promise<boolean> {
   try {
-    const resp = await fetch(`/api/plugins/${encodeURIComponent(id)}/uninstall`, {
+    const resp = await apiFetch(`/api/plugins/${encodeURIComponent(id)}/uninstall`, {
       method: 'POST',
       ...(workspaceContext
         ? { headers: workspaceProjectHeaders(workspaceContext) }
@@ -2657,7 +2658,7 @@ export interface PluginMarketplaceMutationOutcome {
 
 export async function listPluginMarketplaces(): Promise<PluginMarketplace[]> {
   try {
-    const resp = await fetch('/api/marketplaces');
+    const resp = await apiFetch('/api/marketplaces');
     if (!resp.ok) return [];
     const json = (await resp.json()) as { marketplaces?: PluginMarketplace[] };
     return json.marketplaces ?? [];
@@ -2671,7 +2672,7 @@ export async function addPluginMarketplace(input: {
   trust: PluginMarketplaceTrust;
 }): Promise<PluginMarketplaceMutationOutcome> {
   try {
-    const resp = await fetch('/api/marketplaces', {
+    const resp = await apiFetch('/api/marketplaces', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(input),
@@ -2686,7 +2687,7 @@ export async function refreshPluginMarketplace(
   id: string,
 ): Promise<PluginMarketplaceMutationOutcome> {
   try {
-    const resp = await fetch(`/api/marketplaces/${encodeURIComponent(id)}/refresh`, {
+    const resp = await apiFetch(`/api/marketplaces/${encodeURIComponent(id)}/refresh`, {
       method: 'POST',
     });
     return readPluginMarketplaceOutcome(resp, 'Marketplace source refreshed.');
@@ -2699,7 +2700,7 @@ export async function removePluginMarketplace(
   id: string,
 ): Promise<PluginMarketplaceMutationOutcome> {
   try {
-    const resp = await fetch(`/api/marketplaces/${encodeURIComponent(id)}`, {
+    const resp = await apiFetch(`/api/marketplaces/${encodeURIComponent(id)}`, {
       method: 'DELETE',
     });
     if (!resp.ok) {
@@ -2716,7 +2717,7 @@ export async function setPluginMarketplaceTrust(
   trust: PluginMarketplaceTrust,
 ): Promise<PluginMarketplaceMutationOutcome> {
   try {
-    const resp = await fetch(`/api/marketplaces/${encodeURIComponent(id)}/trust`, {
+    const resp = await apiFetch(`/api/marketplaces/${encodeURIComponent(id)}/trust`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ trust }),
@@ -2762,7 +2763,7 @@ export async function applyPlugin(
       locale: options.locale,
     });
     const pluginUrl = `/api/plugins/${encodeURIComponent(pluginId)}`;
-    let resp = await fetch(
+    let resp = await apiFetch(
       `${pluginUrl}/${options.pluginSource ? 'apply-local' : 'apply'}`,
       {
         method: 'POST',
@@ -2872,7 +2873,7 @@ export async function fetchAppliedPluginSnapshot(
   snapshotId: string,
 ): Promise<AppliedPluginSnapshot | null> {
   try {
-    const resp = await fetch(
+    const resp = await apiFetch(
       `/api/applied-plugins/${encodeURIComponent(snapshotId)}`,
     );
     if (!resp.ok) return null;
