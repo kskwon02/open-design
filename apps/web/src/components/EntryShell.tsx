@@ -226,6 +226,7 @@ import {
 } from '../providers/daemon';
 import {
   AMR_LOGIN_POLL_INTERVAL_MS,
+  AMR_LOGIN_TIMEOUT_MS,
   amrLoginPollOutcome,
   isAmrSessionAuthenticated,
   notifyAmrLoginStatusChanged,
@@ -1822,6 +1823,7 @@ export function EntryShell({
             onConfigPersist={onConfigPersist}
             onRefreshAgents={onRefreshAgents}
             onAmrLoginStatusChange={onAmrLoginStatusChange}
+            cloudIdentityRejected={workspaceContextState.failure === 'reauth-required'}
             onFinish={finishOnboarding}
           />
         </main>
@@ -2303,6 +2305,7 @@ function OnboardingView({
   onConfigPersist,
   onRefreshAgents,
   onAmrLoginStatusChange,
+  cloudIdentityRejected = false,
   onFinish,
 }: {
   config: AppConfig;
@@ -2322,6 +2325,13 @@ function OnboardingView({
   onConfigPersist: (cfg: AppConfig) => Promise<void> | void;
   onRefreshAgents: () => Promise<AgentInfo[]> | AgentInfo[];
   onAmrLoginStatusChange?: (status: VelaLoginStatus | null) => void;
+  /**
+   * Cloud answered the workspace read with 401/403. The shell's auth gate sends
+   * Home back here on that answer, so onboarding must not count the AMR session
+   * as signed in until Cloud accepts it too, or the two bounce the user between
+   * them.
+   */
+  cloudIdentityRejected?: boolean;
   onFinish: () => void;
 }) {
   const t = useT();
@@ -2338,6 +2348,11 @@ function OnboardingView({
   const [amrLoginPending, setAmrLoginPending] = useState(false);
   const [amrLoginCancelPending, setAmrLoginCancelPending] = useState(false);
   const passiveReauthCompletedRef = useRef(false);
+  // Sign-in handlers outlive the render that started them, and the workspace
+  // answer can change while a login is pending; read the latest one.
+  const cloudIdentityRejectedRef = useRef(cloudIdentityRejected);
+  cloudIdentityRejectedRef.current = cloudIdentityRejected;
+  const [cloudRejectedAfterSignIn, setCloudRejectedAfterSignIn] = useState(false);
   const [amrLoginError, setAmrLoginError] = useState<string | null>(null);
   // The cloud landing's "sign-in page didn't open?" line is a fallback, so it
   // waits a few seconds into a login attempt before appearing — the browser
@@ -2457,7 +2472,8 @@ function OnboardingView({
     (agent) => agent.id !== 'amr' && (agent.available || deepSeekHarnessNeedsSetup(agent)),
   );
   const visibleAgents = candidateCliAgents.filter((agent) => visibleAgentIds.includes(agent.id));
-  const amrSignedIn = isAmrSessionAuthenticated(amrStatus);
+  const amrSessionAuthenticated = isAmrSessionAuthenticated(amrStatus);
+  const amrSignedIn = amrSessionAuthenticated && !cloudIdentityRejected;
   const amrLoginBusy = amrLoginPending || amrStatus?.loginInFlight === true;
   const selectedAgent = visibleAgents.find((agent) => agent.id === config.agentId) ?? null;
   const selectedAgentChoice = selectedAgent ? (config.agentModels?.[selectedAgent.id] ?? {}) : {};
@@ -2618,6 +2634,14 @@ function OnboardingView({
     // hydrated attempt instead of leaving its stale cancel state indefinitely.
     startHydratedAmrLoginPoll();
   }, [amrLoginPending, amrStatus?.loginInFlight, runtime, step]);
+
+  useEffect(() => {
+    // A rejection recorded before this session signed in is stale, and a 401 is
+    // never retried on its own. Re-read once so it clears without waiting for
+    // the next poll; a rejection that persists keeps the user here to sign in.
+    if (!amrSessionAuthenticated || !cloudIdentityRejected) return;
+    notifyWorkspaceContextRefresh();
+  }, [amrSessionAuthenticated, cloudIdentityRejected]);
 
   useEffect(() => {
     if (
@@ -2966,6 +2990,14 @@ function OnboardingView({
   }
 
   function continueAfterCloudSignIn(): void {
+    if (cloudIdentityRejectedRef.current) {
+      // Cloud still turns this session down, so finishing would only send Home
+      // straight back here. Re-read it and stay; the passive finish above takes
+      // over once Cloud accepts the session.
+      setCloudRejectedAfterSignIn(true);
+      notifyWorkspaceContextRefresh();
+      return;
+    }
     if (config.onboardingCompleted === true && hasRestorableModelSourceConfig) {
       if (passiveReauthCompletedRef.current) return;
       passiveReauthCompletedRef.current = true;
@@ -3125,7 +3157,11 @@ function OnboardingView({
     amrLoginPollCancelledRef.current = false;
     amrLoginCancelRequestedRef.current = false;
     setAmrLoginError(null);
+    setCloudRejectedAfterSignIn(false);
     setAmrLoginPending(true);
+    // The AMR status still carries the credential Cloud rejected, so it cannot
+    // vouch for this sign-in; only a fresh login can replace it.
+    const reauthenticating = cloudIdentityRejectedRef.current;
     try {
       const currentStatus = await fetchVelaLoginStatus();
       if (amrLoginPollCancelledRef.current) return;
@@ -3133,7 +3169,7 @@ function OnboardingView({
         setAmrStatus(currentStatus);
         onAmrLoginStatusChange?.(currentStatus);
       }
-      if (isAmrSessionAuthenticated(currentStatus)) {
+      if (isAmrSessionAuthenticated(currentStatus) && !reauthenticating) {
         continueAfterCloudSignIn();
         return;
       }
@@ -3234,7 +3270,7 @@ function OnboardingView({
         setAmrLoginError(loginResult.error || t('settings.amrLoginErrorCompact'));
         return;
       }
-      if (await pollAmrLoginCompletion()) {
+      if (await pollAmrLoginCompletion({ awaitAttemptEnd: reauthenticating })) {
         continueAfterCloudSignIn();
       }
     } finally {
@@ -3297,7 +3333,9 @@ function OnboardingView({
     notifyAmrLoginStatusChanged('login-canceled');
   }
 
-  async function pollAmrLoginCompletion(): Promise<boolean> {
+  async function pollAmrLoginCompletion(
+    { awaitAttemptEnd = false }: { awaitAttemptEnd?: boolean } = {},
+  ): Promise<boolean> {
     const startedAt = Date.now();
     while (!amrLoginPollCancelledRef.current) {
       await new Promise((resolve) =>
@@ -3313,7 +3351,12 @@ function OnboardingView({
       if (nextStatus && authAttemptId) {
         observeAmrAuthTracking(analytics.track, nextStatus, authAttemptId);
       }
-      const outcome = amrLoginPollOutcome(nextStatus, startedAt);
+      let outcome = amrLoginPollOutcome(nextStatus, startedAt);
+      // A reauthentication starts from a status that already reads signed in;
+      // only the end of this login attempt means the new credential is in place.
+      if (outcome === 'signed-in' && awaitAttemptEnd && nextStatus?.loginInFlight === true) {
+        outcome = Date.now() - startedAt >= AMR_LOGIN_TIMEOUT_MS ? 'timed-out' : 'pending';
+      }
       if (outcome === 'signed-in') {
         if (authAttemptId) {
           resolveAmrAuthTracking(analytics.track, 'success', undefined, {
@@ -3762,9 +3805,9 @@ function OnboardingView({
                 </span>
               </button>
             </div>
-            {amrLoginError ? (
+            {amrLoginError || (cloudIdentityRejected && cloudRejectedAfterSignIn) ? (
               <span className="onboarding-cloud__error" role="alert">
-                {amrLoginError}
+                {amrLoginError ?? t('settings.onboardingCloudIdentityRejected')}
               </span>
             ) : null}
             {/* Everything under the primary button shares one grid cell, so
