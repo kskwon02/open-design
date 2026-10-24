@@ -1263,6 +1263,7 @@ export function registerProjectExportRoutes(app: Express, ctx: RegisterProjectEx
         buffer = await buildScreenshotPptx(images, {
           title: resolvedTitle,
           ...(aspect ? { aspect } : {}),
+          ...(Array.isArray(rendered.notes) ? { notes: rendered.notes } : {}),
         });
         contentType = 'application/vnd.openxmlformats-officedocument.presentationml.presentation';
         ext = 'pptx';
