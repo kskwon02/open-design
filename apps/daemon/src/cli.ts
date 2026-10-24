@@ -14,7 +14,7 @@ import { BRAND_USAGE, isBrandHelpArg } from './cli-help/index.js';
 import { parseDesignSystemRenameArgs } from './design-systems/rename-args.js';
 import { runLiveArtifactsToolCli } from './tools-live-artifacts-cli.js';
 import { runDeliverableSyntaxToolCli } from './tools-deliverable-syntax-cli.js';
-import { splitResearchSubcommand } from './research/cli-args.js';
+import { RESEARCH_SEARCH_STRING_FLAGS, splitResearchSubcommand } from './research/cli-args.js';
 import { resolveDaemonUrl } from './daemon-url.js';
 import { byokProviderFromCliOptions } from './runtimes/byok-cli.js';
 import { BYOK_OPENCODE_AGENT_ID } from './runtimes/byok-opencode.js';
@@ -134,11 +134,6 @@ const MCP_INSTALL_BOOLEAN_FLAGS = new Set([
   'remove',
 ]);
 
-const RESEARCH_SEARCH_STRING_FLAGS = new Set([
-  'query',
-  'max-sources',
-  'daemon-url',
-]);
 const RESEARCH_SEARCH_BOOLEAN_FLAGS = new Set([
   'help',
   'h',
