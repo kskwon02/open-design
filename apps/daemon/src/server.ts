@@ -16363,6 +16363,7 @@ export async function startServer({
         onReady: () => noteCliReadyAt(),
         onSession: () => noteSessionInitDoneAt(),
         onComplete: () => clearFirstOutputWatchdog(),
+        onActivity: () => noteAgentActivity(),
         send: (event, data) => {
           noteAgentActivity();
           if (event === 'agent') {
