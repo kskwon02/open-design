@@ -2039,6 +2039,7 @@ export const HomeHero = forwardRef<HomeHeroHandle, Props>(function HomeHero(
             <PlaceholderCarousel
               active={carouselActive}
               paused={promptFocused}
+              caretPlacement="row-end"
               scenarios={carouselScenarios}
               onScenarioChange={setCarouselScenario}
             />
