@@ -2451,8 +2451,6 @@ export function WorkspaceTabsBar({
       {dockDropdownNode}
       <div
         className={`workspace-tabs-strip${tabsOverflowing ? ' is-overflowing' : ''}`}
-        role="tablist"
-        aria-label="Open workspaces"
         ref={stripRef}
         onDragOver={handleStripDragOver}
         onDrop={handleStripDrop}
@@ -2498,8 +2496,6 @@ export function WorkspaceTabsBar({
               key={tab.id}
               className={`workspace-tab${active ? ' is-active' : ''}${isPinned ? ' is-pinned' : ''}${draggingTabId === tab.id ? ' is-dragging' : ''}${dragOverClass}`}
               data-workspace-tab-id={tab.id}
-              role="tab"
-              aria-selected={active}
               draggable={!isPinned && state.tabs.length > 1}
               onDragStart={(event) => handleTabDragStart(tab.id, event)}
               onDragEnd={handleTabDragEnd}
@@ -2512,6 +2508,7 @@ export function WorkspaceTabsBar({
                 <button
                   type="button"
                   className={`workspace-tab__rail-toggle od-tooltip${entryRailOpen ? ' is-inert' : ''}`}
+                  aria-pressed={active}
                   aria-label={entryRailOpen ? t('entry.navHome') : t('entry.navExpand')}
                   aria-expanded={entryRailOpen}
                   title={entryRailOpen ? undefined : expandHint}
@@ -2546,6 +2543,7 @@ export function WorkspaceTabsBar({
                 <button
                   type="button"
                   className="workspace-tab__rail-toggle od-tooltip"
+                  aria-pressed={active}
                   aria-label={t('entry.navHome')}
                   title={t('entry.navHome')}
                   data-tooltip={t('entry.navHome')}
@@ -2563,6 +2561,8 @@ export function WorkspaceTabsBar({
                   <button
                     type="button"
                     className="workspace-tab__main"
+                    aria-pressed={active}
+                    aria-label={`${display.title}${display.meta ? `, ${display.meta}` : ''}`}
                     onClick={() => openTab(tab)}
                   >
                     <span className="workspace-tab__icon" aria-hidden>
@@ -2583,9 +2583,9 @@ export function WorkspaceTabsBar({
                     <button
                       type="button"
                       className="workspace-tab__close od-tooltip"
-                      aria-label={t('common.close')}
-                      title={t('common.close')}
-                      data-tooltip={t('common.close')}
+                      aria-label={`${t('common.close')} ${display.title}`}
+                      title={`${t('common.close')} ${display.title}`}
+                      data-tooltip={`${t('common.close')} ${display.title}`}
                       data-tooltip-placement="bottom"
                       onClick={() => closeTab(tab.id)}
                     >
