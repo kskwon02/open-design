@@ -1,0 +1,197 @@
+{
+  "$schema": "https://open-design.ai/schemas/plugin.v1.json",
+  "specVersion": "1.0.0",
+  "name": "example-motion-muda-inference-film",
+  "title": "Muda Inference Film",
+  "title_i18n": {
+    "en": "Muda Inference Film",
+    "zh-CN": "Muda 推理性能宣传片"
+  },
+  "version": "0.1.0",
+  "publishedAt": "2026-10-23T00:00:00Z",
+  "description": "Muda turns waiting into waste removed: a chat wait, utilization grid, token stream, name definition, pastel wordmark and timing receipt.",
+  "description_i18n": {
+    "en": "Muda turns waiting into waste removed: a chat wait, utilization grid, token stream, name definition, pastel wordmark and timing receipt.",
+    "zh-CN": "muda 通过聊天等待、利用率网格、词元流、品牌释义、渐变品牌字和计时回执，展示推理等待如何被消除。"
+  },
+  "license": "Apache-2.0",
+  "author": {
+    "name": "Open Design",
+    "url": "https://github.com/nexu-io/open-design"
+  },
+  "homepage": "https://github.com/nexu-io/open-design",
+  "tags": [
+    "example",
+    "first-party",
+    "video",
+    "motion-design",
+    "inference",
+    "kinetic-type",
+    "performance",
+    "pastel",
+    "data-visualization"
+  ],
+  "od": {
+    "inputs": [
+      {
+        "name": "brand",
+        "type": "string",
+        "label": "品牌名",
+        "default": "muda"
+      },
+      {
+        "name": "prompt",
+        "type": "string",
+        "label": "开场问题",
+        "default": "Summarize the quarter in one line."
+      },
+      {
+        "name": "waitingWord",
+        "type": "string",
+        "label": "等待大字",
+        "default": "WAITING"
+      },
+      {
+        "name": "wasteWord",
+        "type": "string",
+        "label": "浪费大字",
+        "default": "WASTE."
+      },
+      {
+        "name": "clusterLine",
+        "type": "string",
+        "label": "网格标题",
+        "default": "Most of inference is waiting."
+      },
+      {
+        "name": "resolvedLine",
+        "type": "string",
+        "label": "优化标题",
+        "default": "Not anymore."
+      },
+      {
+        "name": "claim",
+        "type": "string",
+        "label": "主宣言",
+        "default": "We removed the waste."
+      },
+      {
+        "name": "claimSecond",
+        "type": "string",
+        "label": "第二行宣言",
+        "default": "It was most of it."
+      },
+      {
+        "name": "tagline",
+        "type": "string",
+        "label": "品牌标语",
+        "default": "Inference, minus the waiting."
+      },
+      {
+        "name": "receiptLine",
+        "type": "string",
+        "label": "计时说明",
+        "default": "We were done before the logo was."
+      },
+      {
+        "name": "definition",
+        "type": "string",
+        "label": "品牌释义",
+        "default": "waste; futility; uselessness."
+      },
+      {
+        "name": "contextLine",
+        "type": "string",
+        "label": "释义背景",
+        "default": "The first of the three wastes in the Toyota\nProduction System: muda, mura, muri."
+      },
+      {
+        "name": "alsoLine",
+        "type": "string",
+        "label": "释义结论",
+        "default": "Also: the thing we delete."
+      },
+      {
+        "name": "japanese",
+        "type": "string",
+        "label": "日文宣言",
+        "default": "無駄をなくす"
+      },
+      {
+        "name": "ink",
+        "type": "string",
+        "label": "主文字颜色",
+        "default": "#0D2740"
+      },
+      {
+        "name": "accent",
+        "type": "string",
+        "label": "强调色",
+        "default": "#6955FF"
+      },
+      {
+        "name": "font",
+        "type": "string",
+        "label": "字体",
+        "default": "Inter"
+      },
+      {
+        "name": "throughput",
+        "type": "number",
+        "label": "最终吞吐量",
+        "default": 12480
+      },
+      {
+        "name": "firstToken",
+        "type": "number",
+        "label": "首词元毫秒",
+        "default": 38
+      }
+    ],
+    "useCase": {
+      "query": {
+        "en": "Make a 26-second inference performance film for {{brand}}, with {{font}} typography, {{ink}} text and {{accent}} accents on white. Open with a rounded chat bubble typing “{{prompt}}”, then a spinning Thinking indicator, shimmering placeholder lines and an accelerating wait counter. Cut to giant “{{waitingWord}}”, strike it through with a purple rule, then flash “{{wasteWord}}” in white on purple. Build a 32-by-10 cluster grid under “{{clusterLine}}”, label idle, padding, cold start and queue, show 31% utilization, and sweep pastel squares across it until 94% and “{{resolvedLine}}”. Fill the frame with moving pastel token pills around a white throughput panel, accelerating to {{throughput}} tok/s and {{firstToken}} ms first token. Switch to the dictionary-style name {{brand}}, a hand-drawn dark ensō circle and large pale 無駄 characters: “無駄 — {{definition}}”, “{{contextLine}}” and “{{alsoLine}}” appear in sequence. Reveal “{{claim}}”, followed by “{{claimSecond}}”, with vertical “{{japanese}}” on the right. Sweep a diagonal pastel gradient ribbon behind the bold {{brand}} wordmark and “{{tagline}}”. End with the film length 26.000 s versus the answer time derived from {{firstToken}} milliseconds, “{{receiptLine}}”, and a small centered wordmark. Keep crosshair corners, chapter labels, a running timecode and the thin purple progress rule throughout.",
+        "zh-CN": "为 {{brand}} 制作约 26 秒的推理性能宣传片，白底，使用 {{font}} 字体、{{ink}} 文字和 {{accent}} 强调色。开场让圆角聊天气泡逐字输入「{{prompt}}」，随后出现旋转的 Thinking 指示、扫光占位条和加速的等待计时。切到巨大的「{{waitingWord}}」，用紫色横线划掉，再闪切成紫底白字「{{wasteWord}}」。在「{{clusterLine}}」下逐格生成 32×10 的计算网格，标注闲置、填充、冷启动和排队，显示 31% 利用率；彩色方格从左向右扫过后变成 94% 和「{{resolvedLine}}」。满屏的彩色词元胶囊加速横移，中央白卡显示吞吐量升至 {{throughput}} tok/s，首词元延迟降至 {{firstToken}} ms。然后展示词典式 {{brand}} 品牌名、深蓝手绘圆相与巨大的浅紫「無駄」，依次出现「無駄 — {{definition}}」「{{contextLine}}」和「{{alsoLine}}」。逐词揭示「{{claim}}」，接着是「{{claimSecond}}」，右侧竖排「{{japanese}}」。一条斜切的柔和彩色渐变带扫入，承托粗体 {{brand}} 品牌字与「{{tagline}}」。片尾对照影片 26.000 s 与由 {{firstToken}} 毫秒换算的回答时间，出现「{{receiptLine}}」，最后缩为中央小品牌字。全程保留四角十字、章节名、动态时间码和底部紫色进度细线。"
+      },
+      "exampleOutputs": [
+        {
+          "path": "./example.html",
+          "title": "Muda Inference Film"
+        }
+      ]
+    },
+    "kind": "scenario",
+    "taskKind": "new-generation",
+    "mode": "video",
+    "scenario": "video",
+    "surface": "video",
+    "preview": {
+      "type": "html",
+      "entry": "./example.html",
+      "poster": "./assets/cover.jpg"
+    },
+    "context": {
+      "skills": [
+        {
+          "path": "./SKILL.md"
+        },
+        {
+          "ref": "motion-design"
+        }
+      ],
+      "assets": [
+        "./example.html"
+      ]
+    },
+    "capabilities": [
+      "prompt:inject"
+    ]
+  },
+  "credits": [
+    {
+      "name": "参考视频发布者 @deedydas；画面品牌 muda",
+      "url": "https://x.com/deedydas/status/2102787937482252537",
+      "note": "仅用于内部 ODEval 复刻评估；未抓取来源网页，原始创作者身份及授权未额外核实。"
+    }
+  ]
+}

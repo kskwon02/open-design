@@ -1,0 +1,375 @@
+<!doctype html>
+<html lang="en" data-od-preview-ready="false" data-composition-variables='[{"id": "brand", "type": "string", "label": "品牌名", "default": "muda", "maxLength": 6}, {"id": "prompt", "type": "string", "label": "开场问题", "default": "Summarize the quarter in one line.", "maxLength": 34}, {"id": "waitingWord", "type": "string", "label": "等待大字", "default": "WAITING", "maxLength": 7}, {"id": "wasteWord", "type": "string", "label": "浪费大字", "default": "WASTE.", "maxLength": 6}, {"id": "clusterLine", "type": "string", "label": "网格标题", "default": "Most of inference is waiting.", "maxLength": 38}, {"id": "resolvedLine", "type": "string", "label": "优化标题", "default": "Not anymore.", "maxLength": 22}, {"id": "claim", "type": "string", "label": "主宣言", "default": "We removed the waste.", "maxLength": 21}, {"id": "claimSecond", "type": "string", "label": "第二行宣言", "default": "It was most of it.", "maxLength": 25}, {"id": "tagline", "type": "string", "label": "品牌标语", "default": "Inference, minus the waiting.", "maxLength": 38}, {"id": "receiptLine", "type": "string", "label": "计时说明", "default": "We were done before the logo was.", "maxLength": 44}, {"id": "definition", "type": "string", "label": "品牌释义", "default": "waste; futility; uselessness.", "maxLength": 36}, {"id": "contextLine", "type": "string", "label": "释义背景", "default": "The first of the three wastes in the Toyota\nProduction System: muda, mura, muri.", "maxLength": 100}, {"id": "alsoLine", "type": "string", "label": "释义结论", "default": "Also: the thing we delete.", "maxLength": 35}, {"id": "japanese", "type": "string", "label": "日文宣言", "default": "無駄をなくす", "maxLength": 8}, {"id": "ink", "type": "color", "label": "主文字颜色", "default": "#0D2740"}, {"id": "accent", "type": "color", "label": "强调色", "default": "#6955FF"}, {"id": "font", "type": "font", "label": "字体", "default": "Inter"}, {"id": "throughput", "type": "number", "label": "最终吞吐量", "default": 12480, "min": 1, "max": 99999}, {"id": "firstToken", "type": "number", "label": "首词元毫秒", "default": 38, "min": 1, "max": 999}]'>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="od-motion-output" content="video"><title>muda — 推理性能宣传片</title><script src="assets/gsap.min.js"></script>
+<style>
+@font-face{font-family:Inter;src:url('assets/inter-regular.woff2');font-weight:400;font-display:block}@font-face{font-family:Inter;src:url('assets/inter-bold.woff2');font-weight:700;font-display:block}@font-face{font-family:Inter;src:url('assets/inter-black.woff2');font-weight:900;font-display:block}@font-face{font-family:Mono;src:url('assets/mono.woff2');font-weight:400;font-display:block}
+*{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;background:#101822;overflow:hidden}#main{position:absolute;left:50%;top:50%;width:1920px;height:1080px;transform-origin:center;overflow:hidden;background:white}canvas{display:block;width:1920px;height:1080px}#controls{position:fixed;left:50%;bottom:14px;transform:translateX(-50%);z-index:100;display:flex;align-items:center;gap:14px;width:min(900px,92vw);padding:12px 18px;border-radius:14px;background:#101214dd;color:#fff;font:600 13px ui-monospace,Menlo,monospace;opacity:0;transition:opacity .2s;--accent:#6955FF}#controls:hover,#controls:focus-within{opacity:1}#controls button{font:inherit;letter-spacing:.06em;background:var(--accent);color:#fff;border:0;border-radius:999px;padding:9px 16px;cursor:pointer;min-width:88px}#controls button:focus-visible,#scrub:focus-visible{outline:3px solid #fff;outline-offset:2px}#scrub{flex:1;min-width:0;accent-color:var(--accent)}#time{min-width:110px;text-align:right;font-variant-numeric:tabular-nums}html.od-export #controls{display:none!important}html.od-export #main{left:0!important;top:0!important;transform:none!important}
+</style><style data-od-preview-chrome>
+#controls{position:fixed;left:50%;bottom:14px;transform:translateX(-50%);z-index:100;display:flex;align-items:center;gap:14px;width:min(900px,92vw);box-sizing:border-box;padding:12px 18px;border-radius:14px;background:#101214dd;color:#fff;font:600 13px ui-monospace,Menlo,monospace;opacity:0;transition:opacity .2s}
+#controls:hover,#controls:focus-within{opacity:1}
+#controls button{font:inherit;letter-spacing:.06em;background:var(--accent,#3b6cf6);color:#fff;border:0;border-radius:999px;padding:9px 16px;cursor:pointer;min-width:88px;white-space:nowrap}
+#controls input[type=range]{flex:1;width:auto;min-width:0;accent-color:var(--accent,#3b6cf6)}
+#controls span,#controls output{white-space:nowrap;font-variant-numeric:tabular-nums}
+html.od-export #controls{display:none!important}
+</style>
+</head><body><div id="main" data-composition-id="main" data-start="0" data-duration="26.052789" data-width="1920" data-height="1080">
+<audio id="soundtrack" src="assets/soundtrack.mp3" data-start="0" data-duration="26.053" data-track-index="2" data-volume="1" preload="auto"></audio><canvas id="film" data-od-id="film-canvas" width="1920" height="1080"></canvas></div><div id="controls"><button id="play" type="button" aria-label="播放或暂停">PLAY</button><input id="scrub" type="range" min="0" step="0.01" value="0" aria-label="时间线"><span id="time"></span></div><script>
+const VARS = (window.__hyperframes && window.__hyperframes.getVariables?.()) || {};
+const CFG = {
+  "duration": 26.052789,
+  "scenes": [
+    {
+      "id": "wait",
+      "name": "等待",
+      "dur": 3,
+      "minDur": 3,
+      "maxDur": 4.5
+    },
+    {
+      "id": "word",
+      "name": "等待大字",
+      "dur": 1,
+      "minDur": 1,
+      "maxDur": 1.5
+    },
+    {
+      "id": "waste",
+      "name": "浪费反转",
+      "dur": 0.5,
+      "minDur": 0.5,
+      "maxDur": 0.5
+    },
+    {
+      "id": "cluster",
+      "name": "利用率网格",
+      "dur": 4.5,
+      "minDur": 4.5,
+      "maxDur": 6.5
+    },
+    {
+      "id": "stream",
+      "name": "词元吞吐量",
+      "dur": 4,
+      "minDur": 4,
+      "maxDur": 6
+    },
+    {
+      "id": "name",
+      "name": "品牌释义",
+      "dur": 4,
+      "minDur": 4,
+      "maxDur": 6
+    },
+    {
+      "id": "claim",
+      "name": "消除浪费",
+      "dur": 3.5,
+      "minDur": 3.5,
+      "maxDur": 5
+    },
+    {
+      "id": "mark",
+      "name": "品牌标识",
+      "dur": 2.5,
+      "minDur": 2.5,
+      "maxDur": 4
+    },
+    {
+      "id": "receipt",
+      "name": "计时回执",
+      "dur": 3.052789,
+      "minDur": 3.052789,
+      "maxDur": 4.5
+    }
+  ],
+  "cues": [{"id":"final-done","scene":"receipt","at":0.35,"from":"end"},{"id":"stream-transition","scene":"stream","at":0.05,"from":"end"},
+    {
+      "id": "question-type",
+      "scene": "wait",
+      "at": 0.12
+    },
+    {
+      "id": "thinking",
+      "scene": "wait",
+      "at": 0.9
+    },
+    {
+      "id": "wait-glitch",
+      "scene": "wait",
+      "at": 0.566666667,
+      "from": "end"
+    },
+    {
+      "id": "word-in",
+      "scene": "word",
+      "at": 0
+    },
+    {
+      "id": "strike",
+      "scene": "word",
+      "at": 0.5
+    },
+    {
+      "id": "word-out",
+      "scene": "word",
+      "at": 0.12,
+      "from": "end"
+    },
+    {
+      "id": "waste-in",
+      "scene": "waste",
+      "at": 0
+    },
+    {
+      "id": "waste-out",
+      "scene": "waste",
+      "at": 0,
+      "from": "end"
+    },
+    {
+      "id": "grid-in",
+      "scene": "cluster",
+      "at": 0.15
+    },
+    {
+      "id": "grid-labels",
+      "scene": "cluster",
+      "at": 1.1
+    },
+    {
+      "id": "grid-sweep",
+      "scene": "cluster",
+      "at": 2.65
+    },
+    {
+      "id": "grid-resolved",
+      "scene": "cluster",
+      "at": 3.25
+    },
+    {
+      "id": "grid-out",
+      "scene": "cluster",
+      "at": 0.35,
+      "from": "end"
+    },
+    {
+      "id": "stream-in",
+      "scene": "stream",
+      "at": 0
+    },
+    {
+      "id": "stream-max",
+      "scene": "stream",
+      "at": 3.2
+    },
+    {
+      "id": "stream-out",
+      "scene": "stream",
+      "at": 0.55,
+      "from": "end"
+    },
+    {
+      "id": "enso-in",
+      "scene": "name",
+      "at": 0.25
+    },
+    {
+      "id": "name-in",
+      "scene": "name",
+      "at": 0.6
+    },
+    {
+      "id": "definition-in",
+      "scene": "name",
+      "at": 1.15
+    },
+    {
+      "id": "context-in",
+      "scene": "name",
+      "at": 1.7
+    },
+    {
+      "id": "also-in",
+      "scene": "name",
+      "at": 2.5
+    },
+    {
+      "id": "name-out",
+      "scene": "name",
+      "at": 0.1,
+      "from": "end"
+    },
+    {
+      "id": "claim-in",
+      "scene": "claim",
+      "at": 0
+    },
+    {
+      "id": "claim-second",
+      "scene": "claim",
+      "at": 1.5
+    },
+    {
+      "id": "claim-out",
+      "scene": "claim",
+      "at": 0.27,
+      "from": "end"
+    },
+    {
+      "id": "ribbon-in",
+      "scene": "mark",
+      "at": 0
+    },
+    {
+      "id": "mark-in",
+      "scene": "mark",
+      "at": 0.22
+    },
+    {
+      "id": "tagline-in",
+      "scene": "mark",
+      "at": 0.65
+    },
+    {
+      "id": "mark-out",
+      "scene": "mark",
+      "at": 0.15,
+      "from": "end"
+    },
+    {
+      "id": "film-time",
+      "scene": "receipt",
+      "at": 0
+    },
+    {
+      "id": "answer-time",
+      "scene": "receipt",
+      "at": 0.65
+    },
+    {
+      "id": "receipt-line",
+      "scene": "receipt",
+      "at": 1.05
+    },
+    {
+      "id": "receipt-out",
+      "scene": "receipt",
+      "at": 1.05,
+      "from": "end"
+    },
+    {
+      "id": "small-mark",
+      "scene": "receipt",
+      "at": 0.95,
+      "from": "end"
+    }
+  ],
+  "brand": "muda",
+  "prompt": "Summarize the quarter in one line.",
+  "waitingWord": "WAITING",
+  "wasteWord": "WASTE.",
+  "clusterLine": "Most of inference is waiting.",
+  "resolvedLine": "Not anymore.",
+  "claim": "We removed the waste.",
+  "claimSecond": "It was most of it.",
+  "tagline": "Inference, minus the waiting.",
+  "receiptLine": "We were done before the logo was.",
+  "definition": "waste; futility; uselessness.",
+  "contextLine": "The first of the three wastes in the Toyota\nProduction System: muda, mura, muri.",
+  "alsoLine": "Also: the thing we delete.",
+  "japanese": "無駄をなくす",
+  "ink": "#0D2740",
+  "accent": "#6955FF",
+  "font": "Inter",
+  "throughput": 12480,
+  "firstToken": 38
+,
+  ...VARS
+};
+const SCENE_START={};CFG.scenes.reduce((t,s)=>(SCENE_START[s.id]=t,t+s.dur),0);
+const cueTime=id=>{const c=CFG.cues.find(c=>c.id===id);const s=CFG.scenes.find(s=>s.id===c.scene);return SCENE_START[c.scene]+(c.from==='end'?s.dur-c.at:c.at)};
+const CUE_AT={'stream-transition':cueTime('stream-transition'),'question-type':cueTime('question-type'),'thinking':cueTime('thinking'),'wait-glitch':cueTime('wait-glitch'),'word-in':cueTime('word-in'),'strike':cueTime('strike'),'word-out':cueTime('word-out'),'waste-in':cueTime('waste-in'),'waste-out':cueTime('waste-out'),'grid-in':cueTime('grid-in'),'grid-labels':cueTime('grid-labels'),'grid-sweep':cueTime('grid-sweep'),'grid-resolved':cueTime('grid-resolved'),'grid-out':cueTime('grid-out'),'stream-in':cueTime('stream-in'),'stream-max':cueTime('stream-max'),'stream-out':cueTime('stream-out'),'enso-in':cueTime('enso-in'),'name-in':cueTime('name-in'),'definition-in':cueTime('definition-in'),'context-in':cueTime('context-in'),'also-in':cueTime('also-in'),'name-out':cueTime('name-out'),'claim-in':cueTime('claim-in'),'claim-second':cueTime('claim-second'),'claim-out':cueTime('claim-out'),'ribbon-in':cueTime('ribbon-in'),'mark-in':cueTime('mark-in'),'tagline-in':cueTime('tagline-in'),'mark-out':cueTime('mark-out'),'film-time':cueTime('film-time'),'answer-time':cueTime('answer-time'),'receipt-line':cueTime('receipt-line'),'receipt-out':cueTime('receipt-out'),'small-mark':cueTime('small-mark')};
+const g=document.getElementById('film').getContext('2d'), W=1920,H=1080;
+const cl=(v,a=0,b=1)=>Math.min(b,Math.max(a,v)),mix=(a,b,t)=>a+(b-a)*t, ease=p=>1-(1-cl(p))**3;
+const progress=(t,id,len=.35)=>cl((t-CUE_AT[id])/len), alpha=(t,id,len=.35)=>ease(progress(t,id,len));
+const rnd=i=>{const x=Math.sin(i*127.1+13.7)*43758.5453;return x-Math.floor(x)};
+function rr(x,y,w,h,r,c,a=1){g.save();g.globalAlpha*=a;g.fillStyle=c;g.beginPath();g.roundRect(x,y,w,h,r);g.fill();g.restore()}
+function line(x,y,x2,y2,col,width=1){g.strokeStyle=col;g.lineWidth=width;g.beginPath();g.moveTo(x,y);g.lineTo(x2,y2);g.stroke()}
+function tx(s,x,y,size=32,col=CFG.ink,weight=400,opts={}){g.save();g.fillStyle=col;g.font=`${weight} ${size}px ${opts.font||CFG.font},Arial,sans-serif`;g.textAlign=opts.align||'left';g.textBaseline='alphabetic';g.letterSpacing=(opts.spacing??(-size*.045))+'px';g.globalAlpha*=opts.a??1;g.translate(x,y);g.scale(opts.sx||1,1);if(opts.stroke){g.strokeStyle=col;g.lineWidth=opts.stroke;g.strokeText(String(s),0,0)}g.fillText(String(s),0,0);g.restore()}
+function mono(s,x,y,size=18,col='#768295',opts={}){tx(s,x,y,size,col,400,{font:'Mono',spacing:size*.08,...opts})}
+function measure(s,size=32,w=700,spacing=-.045*size){g.font=`${w} ${size}px ${CFG.font},Arial,sans-serif`;g.letterSpacing=spacing+'px';return g.measureText(s).width}
+function fade(t,id,len,draw){g.save();g.globalAlpha*=alpha(t,id,len);draw();g.restore()}
+function reveal(s,x,y,size,col,w,t,id,interval=.15){if(t<cueTime(id))return;const words=s.split(' ');let xx=x;words.forEach((v,i)=>{tx(v,xx,y+12*(1-alpha(t-cueTime(id)+cueTime(id)-i*interval,id,.18)),size,col,w,{a:alpha(t-i*interval,id,.18)});xx+=measure(v+' ',size,w)})}
+function logo(x,y,size,t,opacity=1){g.save();g.globalAlpha=opacity;const wd=measure(CFG.brand,size,900,-size*.075);tx(CFG.brand,x-wd/2-7,y,size,CFG.ink,900,{spacing:-size*.075});const h=size*.16;rr(x+wd/2+size*.015,y-h*.9,h,h,0,CFG.accent);g.restore()}
+function ambient(t,amp=1){return Math.sin(t*1.1)*amp}
+function wait(t){const a=alpha(t,'question-type',.2);g.save();rr(1020,300,700,96,48,'#F5F9FB',a);g.strokeStyle='#E3E7EB';g.lineWidth=2;g.beginPath();g.roundRect(1020,300,700,96,48);g.stroke();const num=Math.floor(cl((t-cueTime('question-type'))/.47)*CFG.prompt.length);tx(CFG.prompt.slice(0,num),1064,359,36,CFG.ink,400,{a});if(t<.95){const tw=measure(CFG.prompt.slice(0,num),36,400);line(1064+tw,331,1064+tw,368,CFG.ink,2)}
+fade(t,'thinking',.18,()=>{g.strokeStyle='#E5E8EC';g.lineWidth=5;g.beginPath();g.arc(222,508,18,0,Math.PI*2);g.stroke();g.strokeStyle=CFG.accent;g.lineCap='round';g.beginPath();g.arc(222,508,18,t*5,t*5+2.1);g.stroke();tx('Thinking'+'.'.repeat(1+Math.floor(t*3)%3),264,520,36,'#738095');[1320,1180,760].forEach((w,i)=>{const aa=cl((t-cueTime('thinking')-.1*i)/.25);rr(200,580+i*56,w,28,14,'#EDF1F3',aa);g.save();g.beginPath();g.roundRect(200,580+i*56,w,28,14);g.clip();const gx=200+((t*.85+i*.31)%1.6)*1400;const gr=g.createLinearGradient(gx-220,0,gx+220,0);gr.addColorStop(0,'#ffffff00');gr.addColorStop(.5,'#ffffffee');gr.addColorStop(1,'#ffffff00');g.fillStyle=gr;g.fillRect(200,580+i*56,w,28);g.restore()});mono('waiting',200,820,20,'#9CA8B9');const el=cl((t-.9)/2.1);mono(keyframe(t,[[.9,0],[1.1,.16],[1.367,.62],[1.5,.93],[1.6,1.19],[1.867,1.99],[2.1,2.81],[2.367,3.88],[2.6,4.91],[2.85,6.2],[3,6.8]]).toFixed(2)+' s',200,890,64,CFG.ink,{spacing:-2})});g.restore();waitGlitch(t)}
+// Snapshot only our freshly drawn Canvas artwork. Each seek rebuilds its source;
+// no reference pixels or previous-frame state enter the horizontal slices.
+const waitSlice=document.createElement('canvas');waitSlice.width=W;waitSlice.height=H;
+const waitSliceG=waitSlice.getContext('2d');
+function waitGlitch(t){
+  const age=t-cueTime('wait-glitch');if(age<0)return;
+  const frame=Math.floor((age+1e-7)*30), strength=cl(age/.48);
+  waitSliceG.clearRect(0,0,W,H);waitSliceG.drawImage(g.canvas,0,0);
+  const bands=[
+    [300,396,1020,700], [480,534,195,510],
+    [580,608,200,1320], [636,664,200,1180],
+    [692,720,200,760], [844,894,185,300]
+  ];
+  bands.forEach(([top,bottom,x,w],i)=>{
+    const seed=frame*31+i*13;
+    if(rnd(seed+19)<(i===0?.12:.36))return;
+    const count=i===0?3:i===5?3:1;
+    for(let j=0;j<count;j++){
+      const h=4+Math.floor(rnd(seed+j*7+6)*(i===5?13:11));
+      const y=top+Math.floor(rnd(seed+j*17+3)*(bottom-top-h));
+      const dx=Math.round((rnd(seed+j*11+8)*2-1)*(16+strength*54));
+      g.fillStyle='#FFFFFF';g.fillRect(x-80,y,w+160,h);
+      g.drawImage(waitSlice,x,y,w,h,x+dx,y,w,h);
+    }
+  });
+  // Short, isolated scan bars jump each frame; the interface stays anchored.
+  const count=2+Math.floor(rnd(frame+27)*3);
+  for(let i=0;i<count;i++){
+    const seed=frame*43+i*19;
+    const y=[18,300,470,574,718,944][Math.floor(rnd(seed+5)*6)];
+    const x=120+Math.floor(rnd(seed+11)*1420);
+    rr(x,y,110+rnd(seed+3)*510,4+Math.floor(rnd(seed+2)*9),0,CFG.accent,rnd(seed+7)>.5?.9:.22);
+  }
+}
+function word(t){if(t<cueTime('word-in'))return;const scale=1+.006*Math.sin(t*2);g.save();g.translate(960,540);g.scale(scale,scale);tx(CFG.waitingWord,0,140,380,CFG.ink,900,{align:'center',spacing:-13,stroke:3.5});g.restore();const p=ease(progress(t,'strike',.18));rr(20,513,1880*p,44,0,CFG.accent);const gl=progress(t,'word-out',.12);if(gl){for(let i=0;i<8;i++)rr(rnd(i)*1600,250+rnd(i+7)*600,180,4,0,CFG.accent,.4)}}
+function waste(t){if(t<cueTime('waste-in'))return;tx(CFG.wasteWord,960+ambient(t,1),680,430,'#FFFFFF',900,{align:'center',spacing:-20,sx:.95});if(t>=cueTime('waste-out'))g.clearRect(0,0,0,0)}
+const pastels=['#DDD7FF','#FFD5E4','#CDEDE0','#FFDBCA','#D0E3FF'];
+function tag(s,x,y,anchorY,a){g.save();g.globalAlpha=a;const w=s.length*12+26;line(x,y+16,x,anchorY,CFG.ink,1);g.beginPath();g.fillStyle=CFG.ink;g.arc(x,anchorY,4,0,7);g.fill();rr(x-w/2,y,w,32,18,CFG.ink);mono(s,x,y+22,18,'#FFFFFF',{align:'center',spacing:1.7});g.restore()}
+function cluster(t,l){const out=1-alpha(t,'grid-out',.35);const sweep=ease(progress(t,'grid-sweep',.85));const resolved=alpha(t,'grid-resolved',.2);g.save();g.globalAlpha=1;tx(CFG.clusterLine,224,210,76,CFG.ink,700,{a:alpha(t,'grid-in',.3)*(1-resolved),spacing:-3.5});tx(CFG.resolvedLine,224,210,76,CFG.accent,700,{a:resolved,spacing:-3.5});for(let r=0;r<10;r++)for(let c=0;c<32;c++){const i=r*32+c;const rev=cl((t-cueTime('grid-in')-c*.014-r*.013)/.45);let sz=38*(1-.95*alpha(t,'grid-out',.35)), x=224+c*46+(38-sz)/2,y=300+r*46+(38-sz)/2;const active=c/32<sweep;const k=rnd(i+7);const a=rev*(.84+.16*Math.sin(t*2+i));if(active){rr(x,y,sz,sz,4,pastels[(r+c)%5],a)}else {g.save();g.globalAlpha=a;const col=k<.31?'#DDD6FE':k<.52?'#F0F3F5':'#F7F8FA';if(k<.52)rr(x,y,sz,sz,5,col);if(k<.31){g.strokeStyle='#B9ABFC';g.lineWidth=1.5;g.beginPath();g.roundRect(x,y,sz,sz,5);g.stroke()}else if(k<.67){g.strokeStyle='#C8CCD4';g.lineWidth=1;g.setLineDash([3,4]);g.beginPath();g.roundRect(x,y,sz,sz,4);g.stroke();g.setLineDash([])}else if(k<.83){g.save();g.beginPath();g.rect(x,y,sz,sz);g.clip();for(let j=-sz;j<sz*2;j+=7)line(x+j,y,x+j-sz,y+sz,'#CAD0D8',1);g.restore()}else {rr(x,y,sz,sz,4,'#F6F7FA');for(let j=0;j<3;j++)rr(x+8+j*8,y+17,4,4,1,'#BCC3D2')}g.restore()}}
+const la=alpha(t,'grid-labels',.7)*(1-cl(sweep*4));tag('IDLE',381,252,365,la);tag('PADDING',1485,252,365,la);tag('COLD START',473,772,687,la*alpha(t-.35,'grid-labels',.6));tag('QUEUE',1393,772,687,la*alpha(t-.65,'grid-labels',.6));if(sweep>0&&sweep<1)line(224+sweep*1472,276,224+sweep*1472,760,CFG.accent,2);const info=alpha(t-.55,'grid-in',.3)*out;mono('ONE GPU CLUSTER · ONE SECOND · EACH SQUARE ≈ 3 MS',224,880,18,'#7E8795',{a:info});mono('UTILIZATION',1688,834,18,'#7E8795',{align:'right',a:info});tx(Math.round(31+63*sweep)+'%',1688,930,110,sweep>.9?CFG.accent:CFG.ink,700,{align:'right',a:info,spacing:-7});g.restore()}
+const words='warm answer schedule question speculative tokens fp8 the shard ready verify route ends done draft prefill kv accept fused attention stream cache batch decode page is before'.split(' ');
+function keyframe(t,points){for(let i=1;i<points.length;i++){if(t<points[i][0]){const [a,v]=points[i-1],[b,w]=points[i];return mix(v,w,cl((t-a)/(b-a)))}}return points.at(-1)[1]}
+function stream(t,l){const entering=alpha(t-.25,'stream-in',.25),out=1-alpha(t,'stream-transition',.05);const p=cl((t-cueTime('stream-in'))/(cueTime('stream-max')-cueTime('stream-in')));const v=Math.round(CFG.throughput*keyframe(l,[[0,0],[.25,0],[.5,12],[.75,155],[1,523],[1.25,1376],[1.5,2632],[1.75,4806],[2,7338],[2.25,9622],[2.5,10957],[2.75,11879],[3,12290],[3.25,12461],[3.5,12480]])/12480);g.save();g.globalAlpha=out;const washed=alpha(t,'stream-out',.35);for(let r=0;r<14;r++){let x=-300-((Math.min(l,3.4)**2*150+Math.min(l,3.4)*35+Math.max(0,l-3.4)*22)*(r%2?1.05:.9)%2200);const y=96+r*66;for(let i=0;i<65;i++){const k=(i+r*13)%words.length;const s=words[k],w=40+s.length*15.5;rr(x,y,w,40,22,washed>.1?'#EDF3F6':pastels[(i+r)%5],1-washed*.55);mono(s,x+18,y+27,23,'#41536B',{spacing:0,a:1-washed*.65});x+=w+8}}g.globalAlpha*=entering;g.shadowColor='#17304D22';g.shadowBlur=60;g.shadowOffsetY=25;rr(540,350,840,380,30,'#FFFFFF');g.shadowBlur=0;g.shadowOffsetY=0;mono('THROUGHPUT',600,430,18,'#7C8592');let ss=v.toLocaleString('en-US');const full=measure(ss,150,700,-8);tx(ss,590,570,150,l>=3.45?CFG.accent:CFG.ink,700,{spacing:-8});tx('tok/s',600+full+20,570,40,'#7B8190',400,{spacing:-1.5});line(600,611,1320,611,'#E3E4E6',2);mono('FIRST TOKEN',600,670,18,'#7C8592');const ft=Math.round(CFG.firstToken*keyframe(l,[[0,900],[.5,900],[.75,473],[1,277],[1.25,158],[1.5,104],[1.75,71],[2,55],[2.25,47],[2.5,43],[2.75,41],[3,39],[3.25,38]])/38);mono(ft+' ms',1320,675,34,CFG.ink,{align:'right',spacing:-1});g.restore();if(t>cueTime('stream-max')){g.save();g.globalAlpha=out*alpha(t,'stream-max',.2);rr(990+Math.sin(t)*4,822,126,40,22,CFG.accent);mono('done.',1008+Math.sin(t)*4,849,23,'#FFFFFF',{spacing:0});g.restore()} }
+function enso(t){const p=ease(progress(t,'enso-in',1.15));const cx=1400+Math.sin(t*.7)*5,cy=470+Math.cos(t*.8)*4;g.fillStyle=CFG.ink;const start=-1.78;const total=5.85*p;const n=180;g.beginPath();for(let i=0;i<=n;i++){const q=i/n,ang=start+q*total;const thick=(6+25*Math.sin(q*Math.PI*.92))*(.9+.07*Math.sin(i*.7));const rad=263+thick/2;const x=cx+Math.cos(ang)*rad,y=cy+Math.sin(ang)*rad;if(i===0)g.moveTo(x,y);else g.lineTo(x,y)}for(let i=n;i>=0;i--){const q=i/n,ang=start+q*total;const thick=(6+25*Math.sin(q*Math.PI*.92))*(.9+.07*Math.sin(i*.7));const rad=263-thick/2;g.lineTo(cx+Math.cos(ang)*rad,cy+Math.sin(ang)*rad)}g.closePath();g.fill()}
+function name(t,l){const out=1-alpha(t,'name-out',.1);g.save();g.globalAlpha=out;const dx=ambient(t,6);tx('無駄',890+dx,1170,740,'#E9E5FF',400,{font:'"Hiragino Mincho ProN","Songti SC",serif',spacing:5,a:alpha(t,'enso-in',.5)});enso(t);fade(t,'name-in',.3,()=>{mono('NOUN · JAPANESE',150+dx,366,20);tx(CFG.brand,145+dx,560,224,CFG.ink,400,{font:'"Times New Roman",serif',spacing:-8})});fade(t,'definition-in',.4,()=>{tx('無駄 — '+CFG.definition,150+dx,640,38,CFG.ink,400,{spacing:-1.6});line(150+dx,695,150+dx+574*alpha(t,'context-in',.4),695,CFG.ink,2)});fade(t,'context-in',.35,()=>{CFG.contextLine.split('\n').forEach((s,i)=>tx(s,150+dx,758+i*42,28,'#7B8595',400,{spacing:-.9}))});fade(t,'also-in',.3,()=>tx(CFG.alsoLine,150+dx,889,38,CFG.accent,700,{spacing:-1.5}));g.restore()}
+function revealClaim(t,x,y){const words=CFG.claimSecond.split(' ');let xx=x;words.forEach((w,i)=>{const a=alpha(t-i*.23,'claim-second',.18);const col=i===2?CFG.ink:CFG.accent;tx(w,xx,y+12*(1-a),148,col,700,{a});xx+=measure(w+' ',148,700)})}
+function claim(t,l){const out=1-alpha(t,'claim-out',.27);g.save();g.globalAlpha=out;const dx=ambient(t,2);reveal(CFG.claim,150+dx,470,148,CFG.ink,700,t,'claim-in',.21);revealClaim(t,150+dx,696);const chars=Array.from(CFG.japanese);chars.forEach((c,i)=>tx(c,1800,226+i*96+Math.sin(t*.9)*3,68,'#CFC4FF',400,{font:'"Hiragino Mincho ProN","Songti SC",serif',align:'center',a:cl(l/.3)}));mono('MUDA O NAKUSU — ELIMINATE WASTE',1840,881,16,'#A6B0BF',{align:'right'});if(t>=cueTime('claim-out')){for(let i=0;i<6;i++)rr(500+rnd(i)*900,300+rnd(i+7)*500,200,4,0,CFG.accent,.3)}g.restore()}
+function mark(t,l){const out=1-alpha(t,'mark-out',.15);g.save();g.globalAlpha=out;const ph=alpha(t,'ribbon-in',.35);g.beginPath();g.moveTo(0,690-270*ph);g.lineTo(1920,460-288*ph);g.lineTo(1920,460+240*ph);g.lineTo(0,690+240*ph);g.closePath();g.save();g.clip();const gradient=g.createLinearGradient(0,800,1800,200);gradient.addColorStop(0,'#DBEAFF');gradient.addColorStop(.28,'#D6E7FA');gradient.addColorStop(.5,'#D5CAFC');gradient.addColorStop(.7,'#FFE2D1');gradient.addColorStop(1,'#FFE0EE');g.fillStyle=gradient;g.fillRect(0,0,1920,1080);let r=g.createRadialGradient(1000+Math.sin(t)*90,800,0,1000,800,640);r.addColorStop(0,'#D3F0DF');r.addColorStop(1,'#D3F0DF00');g.fillStyle=r;g.fillRect(0,0,1920,1080);g.restore();logo(960,640,286,t,alpha(t,'mark-in',.38));fade(t,'tagline-in',.5,()=>tx(CFG.tagline,960,760,48,'#536979',400,{align:'center',spacing:-1.7}));if(l>.9)mono('FIRST TOKEN '+CFG.firstToken+' MS · '+Number(CFG.throughput).toLocaleString('en-US')+' TOK/S · NOTHING IDLE',960,818,13,'#A6B0BF',{align:'center',a:cl((l-.9)/.4)});g.restore()}
+function receipt(t,l){const a=1-alpha(t,'receipt-out',.2);g.save();g.globalAlpha=a;const d=Math.sin(t)*1.6;const move=194*alpha(t,'answer-time',.35);fade(t,'film-time',.4,()=>{mono('THIS FILM',540,248+d+move,20);mono('26.000 s',1380,277+d+move,72,CFG.ink,{align:'right',spacing:-2});line(540,319+move,540+840*alpha(t,'film-time',.45),319+move,CFG.ink,2)});fade(t,'answer-time',.25,()=>{mono('YOUR ANSWER',540,590+d,20);mono((CFG.firstToken/1000).toFixed(3)+' s',1380,620+d,72,CFG.accent,{align:'right',spacing:-2})});fade(t,'receipt-line',.3,()=>tx(CFG.receiptLine,960,760+d,36,'#758295',400,{align:'center',spacing:-1.2}));g.restore();logo(960,570+ambient(t,4),96*(1+.012*Math.sin(t*2.2)),t,alpha(t,'small-mark',.2));if(t>cueTime('final-done'))mono('done.',960,626,14,'#7E8795',{align:'center',a:alpha(t,'final-done',.2)})}
+const drawers={wait,word,waste,cluster,stream,name,claim,mark,receipt};
+function hud(t,s){const light=s.id==='waste',col=light?'#DDD7FF':'#778498',rule=light?'#9E93FF':'#D9DFE6';g.save();for(const x of [64,1856])for(const y of [64,1016]){line(x-12,y,x+12,y,col,1);line(x,y-12,x,y+12,col,1)}mono(CFG.brand.toUpperCase()+' / FILM 01',92,71,18,col,{spacing:2});mono('T+'+t.toFixed(3).padStart(6,'0')+'s',1828,71,18,col,{align:'right',spacing:.4});line(92,995,1828,995,rule,1.5);line(92,995,92+1736*cl(t/CFG.duration),995,light?'#FFFFFF':CFG.accent,1.5);const names={wait:'01 — THE WAIT',word:'02 — THE WORD',waste:'02 — THE WORD',cluster:'03 — THE CLUSTER',stream:'04 — THE STREAM',name:'05 — THE NAME',claim:'06 — THE CLAIM',mark:'07 — THE MARK',receipt:'08 — THE RECEIPT'};mono(names[s.id],92,1023,18,col,{spacing:1.5});mono('1920×1080 · 30 FPS · 120 BPM',1828,1023,18,col,{align:'right',spacing:.1});g.restore()}
+function render(t){t=cl(t,0,CFG.duration);const s=CFG.scenes.find(s=>t<SCENE_START[s.id]+s.dur)||CFG.scenes.at(-1);g.clearRect(0,0,W,H);g.fillStyle=s.id==='waste'?CFG.accent:'#FFFFFF';g.fillRect(0,0,W,H);g.save();if(s.dur>s.minDur+.01){g.translate(18*Math.sin(t*1.3),9*Math.cos(t*.91))}drawers[s.id](t,t-SCENE_START[s.id]);g.restore();hud(t,s);document.getElementById('scrub').value=t;document.getElementById('time').textContent=t.toFixed(2)+' / '+CFG.duration.toFixed(2)}
+const clock={t:0};const tl=gsap.timeline({paused:true,onUpdate:()=>render(clock.t)});tl.to(clock,{t:CFG.duration,duration:CFG.duration,ease:'none'},0);window.__timelines={};window.__odRenderAt=(t)=>{window.__odFrameRenderer=true;const at=cl(t,0,CFG.duration);tl.pause(at,true);clock.t=at;render(at)};
+const main=document.getElementById('main');main.dataset.duration=CFG.duration;
+const scrub=document.getElementById('scrub'),playBtn=document.getElementById('play');scrub.max=CFG.duration;
+document.getElementById('controls').style.setProperty('--accent',CFG.accent);
+function syncControls(){playBtn.textContent=!tl.paused()&&tl.time()<CFG.duration?'PAUSE':'PLAY'}
+gsap.ticker.add(syncControls);
+scrub.oninput=()=>{const at=cl(+scrub.value,0,CFG.duration);tl.pause(at,true);clock.t=at;render(at);syncControls()};
+playBtn.onclick=()=>{if(tl.time()>=CFG.duration-.01)tl.restart();else if(tl.paused())tl.play();else tl.pause();syncControls()};
+addEventListener('keydown',e=>{if(e.code==='Space'&&e.target===document.body){e.preventDefault();playBtn.click()}});
+function fit(){if(document.documentElement.classList.contains('od-export'))return;main.style.transform=`translate(-50%,-50%) scale(${Math.min(innerWidth/W,innerHeight/H)})`}addEventListener('resize',fit);fit();Promise.all([document.fonts.load('400 36px Inter'),document.fonts.load('700 76px Inter'),document.fonts.load('900 300px Inter'),document.fonts.load('400 18px Mono')]).then(()=>document.fonts.ready).then(async()=>{await new Promise(r=>requestAnimationFrame(r));await new Promise(r=>requestAnimationFrame(r));window.__timelines={main:tl};render(0);document.documentElement.dataset.odPreviewReady='true';if(!window.__odFrameRenderer&&!document.documentElement.classList.contains('od-export'))tl.play()});
+</script><script data-od-preview-audio>
+(function(){var a=document.getElementById('soundtrack');if(!a||document.documentElement.classList.contains('od-export'))return;
+function tick(){if(window.__odMotionSourcePlayer||window.__odMotionRender)return;var tl=window.__timelines&&window.__timelines.main;
+if(tl){var t=tl.time(),on=tl.isActive();if(on){if(a.paused)a.play().catch(function(){});if(Math.abs(a.currentTime-t)>0.2)a.currentTime=t;}else{if(!a.paused)a.pause();if(Math.abs(a.currentTime-t)>0.05)a.currentTime=t;}}
+requestAnimationFrame(tick);}requestAnimationFrame(tick);})();
+</script>
+</body></html>

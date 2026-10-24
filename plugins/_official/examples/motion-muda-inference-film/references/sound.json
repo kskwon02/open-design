@@ -1,0 +1,103 @@
+{
+  "version": 1,
+  "music": {
+    "role": "bed",
+    "description": "克制的电子脉冲与短促合成器音色，前段紧张、词元流段加速、品牌段舒展；音色判断为估计，尚未经听辨确认。",
+    "bpm": 120,
+    "beatConfidence": "none",
+    "cutOnBeat": false,
+    "sections": [
+      {
+        "scene": "wait",
+        "energy": "low"
+      },
+      {
+        "scene": "word",
+        "energy": "mid"
+      },
+      {
+        "scene": "waste",
+        "energy": "high"
+      },
+      {
+        "scene": "cluster",
+        "energy": "mid"
+      },
+      {
+        "scene": "stream",
+        "energy": "high"
+      },
+      {
+        "scene": "name",
+        "energy": "low"
+      },
+      {
+        "scene": "claim",
+        "energy": "mid"
+      },
+      {
+        "scene": "mark",
+        "energy": "mid"
+      },
+      {
+        "scene": "receipt",
+        "energy": "low"
+      }
+    ]
+  },
+  "effects": [
+    {
+      "cue": "question-type",
+      "kind": "typing",
+      "sync": "contact"
+    },
+    {
+      "cue": "wait-glitch",
+      "kind": "click",
+      "sync": "motion-peak"
+    },
+    {
+      "cue": "strike",
+      "kind": "whoosh",
+      "sync": "motion-peak"
+    },
+    {
+      "cue": "waste-in",
+      "kind": "impact",
+      "sync": "contact"
+    },
+    {
+      "cue": "grid-sweep",
+      "kind": "whoosh",
+      "sync": "motion-peak"
+    },
+    {
+      "cue": "stream-in",
+      "kind": "riser",
+      "sync": "riser-into-impact"
+    },
+    {
+      "cue": "enso-in",
+      "kind": "whoosh",
+      "sync": "motion-peak"
+    },
+    {
+      "cue": "ribbon-in",
+      "kind": "whoosh",
+      "sync": "motion-peak"
+    },
+    {
+      "cue": "answer-time",
+      "kind": "click",
+      "sync": "contact"
+    }
+  ],
+  "effectsPer10s": 3.45,
+  "voice": {
+    "present": false
+  },
+  "demoTrack": {
+    "file": "assets/soundtrack.mp3",
+    "origin": "reference"
+  }
+}
