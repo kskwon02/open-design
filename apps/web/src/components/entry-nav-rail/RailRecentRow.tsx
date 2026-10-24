@@ -14,7 +14,9 @@ import type { ProjectDisplayStatus, WorkspaceCollabContext } from '@open-design/
 import { useT } from '../../i18n';
 import { Icon } from '../Icon';
 import {
+  hasAwaitingReplyTag,
   hasCompletionNotice,
+  ProjectAwaitingReplyTag,
   hasRunStatusGlyph,
   ProjectCompletionDot,
   ProjectFolderGlyph,
@@ -348,6 +350,14 @@ export function RailRecentRow({
             )}
           </span>
           <span className="entry-nav-rail__recent-name">{project.name}</span>
+          {/* P0-24 推测项 A-09:等用户回答时,项目名后面写出「需要你回复」(OPEND-4216) */}
+          {runStatus && hasAwaitingReplyTag(runStatus) ? (
+            <ProjectAwaitingReplyTag
+              className="entry-nav-rail__recent-reply-tag"
+              label={t(STATUS_LABEL_KEYS[runStatus])}
+              testId="entry-nav-recent-reply-tag"
+            />
+          ) : null}
           {/* Completed, unread: the dot at the row's end. The section spends
               it when the row opens the project (`acknowledgeProjectCompletion`
               in the shared run-status store), which is also what drops it from

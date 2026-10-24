@@ -84,9 +84,9 @@ describe('ProjectRunStatusIcon', () => {
     expect(new Set(marks).size).toBe(1);
   });
 
-  it('turns the attention orb at running speed', () => {
-    // A pending question is a live run, not a stalled one. Only `queued` may
-    // turn slowly, and only because it has not started.
+  it('turns every live orb at running speed', () => {
+    // A pending question is a live run, not a stalled one. A queued run draws
+    // the same spinner as a running one (P0-24, PRD scenario A2 / answer P4).
     const speedOf = (status: ProjectDisplayStatus) => {
       const { root } = shapeOf(status) as { root: HTMLElement };
       return root.className
@@ -95,12 +95,11 @@ describe('ProjectRunStatusIcon', () => {
     };
 
     expect(speedOf('awaiting_input')).toBe(speedOf('running'));
-    expect(speedOf('queued')).not.toBe(speedOf('running'));
+    expect(speedOf('queued')).toBe(speedOf('running'));
   });
 
   it('leaves running and queued on the default green', () => {
-    // Same family, same colour — only the speed differs, so neither may set a
-    // palette override.
+    // Same family, same colour and speed, so neither may set a palette override.
     for (const status of ['running', 'queued'] as const) {
       const { root } = shapeOf(status) as { root: HTMLElement };
       expect(root.style.getPropertyValue('--c1')).toBe('');

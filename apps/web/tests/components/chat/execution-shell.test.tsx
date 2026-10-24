@@ -82,10 +82,11 @@ describe('壳头', () => {
       .toContain('进行中');
   });
 
-  it('结束:纯文本「已完成」,默认收起,球撤掉', () => {
+  it('结束但量不到秒数:只写「用时」不写数字(P0-24 Q1),默认收起,球撤掉', () => {
     const [shell] = shellsOf(call('t1', 'Bash', { command: 'ls' }), 'succeeded');
     render(<ExecutionShell shell={shell as ShellData} />);
-    expect(screen.getByText('已完成')).toBeTruthy();
+    expect(screen.getByText('用时')).toBeTruthy();
+    expect(screen.queryByText('已完成')).toBeNull();
     expect(document.querySelector('[data-orb]')).toBeNull();
     expect(document.querySelector('details')?.open).toBe(false);
   });
@@ -108,19 +109,33 @@ describe('壳头', () => {
    * 没变的三样仍然钉在这里:不挂球、不是第四种 `status`(壳仍走 `stopped` 旗标)、
    * 不退成红色的「运行失败」。
    */
-  it('手动停止:状态词是「已取消」,不挂球(秒数停住,仍不是第四种状态)', () => {
+  it('手动停止:状态词是「已停止」(P0-24),不挂球(秒数停住,仍不是第四种状态)', () => {
     const [shell] = shellsOf(call('t1', 'Bash', { command: 'ls' }), 'canceled');
     render(<ExecutionShell shell={shell as ShellData} />);
-    expect(screen.getByText('已取消')).toBeTruthy();
+    expect(screen.getByText('已停止')).toBeTruthy();
     expect(screen.queryByText('进行中')).toBeNull();
     expect(screen.queryByText('运行失败')).toBeNull();
     expect(document.querySelector('[data-orb]')).toBeNull();
+    // PRD: 「已停止」灰色,与红色的「运行失败」区分
+    expect(screen.getByText('已停止').className).toMatch(/stStopped/);
   });
 
   it('空态:没有内容时不出箭头(D21)', () => {
     const [shell] = shellsOf([{ kind: 'status', label: 'requesting' }], 'running');
     render(<ExecutionShell shell={shell as ShellData} />);
     expect(document.querySelector('details svg')).toBeNull();
+  });
+
+  // P0-24 推测项 A-08(场景 A4):自动重试时标题仍是「进行中」,后面加「正在重试」
+  it('自动重试中:标题是「进行中」+「正在重试」;结束的回合不带(推测项 A-08)', () => {
+    const [running] = shellsOf(call('t1', 'Bash', { command: 'ls' }), 'running');
+    const { unmount } = render(<ExecutionShell shell={running as ShellData} agentRetrying />);
+    expect(screen.getByText('进行中')).toBeTruthy();
+    expect(screen.getByTestId('turn-head-retrying').textContent).toBe('正在重试');
+    unmount();
+    const [done] = shellsOf(call('t1', 'Bash', { command: 'ls' }), 'succeeded');
+    render(<ExecutionShell shell={done as ShellData} agentRetrying />);
+    expect(screen.queryByTestId('turn-head-retrying')).toBeNull();
   });
 
   it('壳头耗时按粗档写(31s 而不是 31.0s)', () => {

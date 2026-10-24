@@ -108,6 +108,12 @@ export interface ExecutionShellProps {
    */
   odCardScope?: string;
   onBrandBrowserAssistConfirm?: BrandBrowserAssistConfirm;
+  /**
+   * The daemon is re-running this turn after a transient failure (network
+   * jitter, rate limit). P0-24 A4: the header still reads 进行中 and adds
+   * 「正在重试」. Only the running shell reads it.
+   */
+  agentRetrying?: boolean;
 }
 
 export function ExecutionShell({
@@ -121,6 +127,7 @@ export function ExecutionShell({
   concluded = false,
   odCardScope,
   onBrandBrowserAssistConfirm,
+  agentRetrying = false,
 }: ExecutionShellProps): ReactElement {
   const t = useT();
   const running = shell.status === 'running' && !shell.stopped;
@@ -210,12 +217,13 @@ export function ExecutionShell({
        * 右边还挂着一个 12 分钟的秒数。用户报的「仍显示 Working 4m 58s、误以为还在跑」
        * 就是这一帧(真机 run `b13328d8-d151-4628-9134-23ad9da4b64f`)。
        *
-       * 壳头是这一轮**唯一常驻**的状态陈述,所以由它把终态说出来。用的是记录卡自己
-       * 那一档词 `chat.record.canceled`(en "Canceled" / zh「已取消」),不是页脚那句
-       * 「已手动停止」—— 两处同时可见时(最后一轮)说的是同一件事的两句话,不是同一句
-       * 话说两遍;而原来那个「进行中 vs 已取消」的**自相矛盾**正好被这一改消掉。
+       * 壳头是这一轮**唯一常驻**的状态陈述,所以由它把终态说出来。
+       *
+       * P0-24 把这个词定为「已停止」(`chat.record.turnStopped`):被停止是中性结果,
+       * 不是取消也不是失败。不复用 `chat.record.canceled` —— 那个词还是待办勾选的
+       * 读屏文字(`StatusMark`),两处的意思不同。
        */
-      return <span>{t('chat.record.canceled')}</span>;
+      return <span className={styles.stStopped}>{t('chat.record.turnStopped')}</span>;
     }
     if (running) {
       /**
@@ -262,10 +270,25 @@ export function ExecutionShell({
           {/* 不给标签:紧跟着的就是「进行中」那行字,读屏念一遍就够 */}
           <Orb state="connecting" box={24} className={styles.orb} />
           <span className={`${styles.shimmer} ${styles.head}`}>{t('chat.record.running')}</span>
+          {/*
+            P0-24 推测项 A-08(场景 A4):自动重试期间标题仍是「进行中」,后面加「正在重试」。
+            位置和样式等设计(清单 3.4);先用现有的次要文字样式,复用重连那一行的同一个词。
+          */}
+          {agentRetrying ? (
+            <span className={styles.retrying} data-testid="turn-head-retrying">{t('chat.edge.retrying')}</span>
+          ) : null}
         </>
       );
     }
-    return <span>{t('chat.record.done')}</span>;
+    /*
+     * P0-24:正常结束的一轮不替用户宣布「已完成」,只说「用时」,秒数紧跟在后面
+     * (`elapsed`,由 `Foldable` 的 meta 位画)。等用户回答的一轮也走这里 ——
+     * 它的运行已经正常结束,不能再说「已完成」。
+     *
+     * 状态词只有四种(进行中 / 用时 / 已停止 / 运行失败),和量不量得到时长无关:
+     * 改版前的旧消息没有起止时刻时,只写「用时」不写数字(产品裁决 Q1)。
+     */
+    return <span>{t('chat.record.turnElapsed')}</span>;
   })();
 
   /**

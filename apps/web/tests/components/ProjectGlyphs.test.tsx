@@ -45,14 +45,18 @@ function project(id: string, name: string, updatedAt: number): Project {
 const DONE = project('project-done', 'Project Done', 3);
 const RUNNING = project('project-running', 'Project Running', 2);
 const QUIET = project('project-quiet', 'Project Quiet', 1);
-const PROJECTS = [DONE, RUNNING, QUIET];
+const ASKING = project('project-asking', 'Project Asking', 0);
+const PROJECTS = [DONE, RUNNING, QUIET, ASKING];
 
 /** What the runs feed answers per project. */
 const RUNS: Record<string, { status: string; runId: string } | undefined> = {
   [DONE.id]: { status: 'succeeded', runId: 'run-done-1' },
   [RUNNING.id]: { status: 'running', runId: 'run-running-1' },
   [QUIET.id]: undefined,
+  [ASKING.id]: { status: 'succeeded', runId: 'run-asking-1' },
 };
+/** Projects whose latest conversation holds an unanswered question. */
+const AWAITING = new Set([ASKING.id]);
 
 const activeRoute: Route = {
   kind: 'project',
@@ -83,7 +87,7 @@ function stubRunsFeed() {
             updatedAt: 2,
           }]
         : [];
-      return new Response(JSON.stringify({ runs, awaitingInputProjectIds: [] }), {
+      return new Response(JSON.stringify({ runs, awaitingInputProjectIds: AWAITING.has(id) ? [id] : [] }), {
         status: 200,
         headers: { 'Content-Type': 'application/json' },
       });
@@ -207,6 +211,23 @@ describe('project glyphs in the rail and the switcher (OPEND-3129 / OPEND-3133)'
     expect(glyphTestIdIn(switcherLead(listbox, DONE.name))).toBe('project-folder-glyph');
     expect(within(switcherRow(listbox, DONE.name))
       .getByTestId('workspace-tabs-dropdown-unread').getAttribute('aria-label')).toBe('Completed');
+  });
+
+  // P0-24 推测项 A-09(测试用例 X21 / OPEND-4216):等用户回答时看得见「需要你回复」,
+  // 不能只靠状态球的读屏名称。
+  it('writes the awaiting-reply status out as a visible tag after the name, in both places', async () => {
+    renderBoth();
+    await waitFor(() => {
+      expect(within(railRow(ASKING.name)).getByTestId('entry-nav-recent-reply-tag').textContent).toBe('Needs input');
+    });
+    expect(within(railRow(RUNNING.name)).queryByTestId('entry-nav-recent-reply-tag')).toBeNull();
+    expect(within(railRow(DONE.name)).queryByTestId('entry-nav-recent-reply-tag')).toBeNull();
+
+    const listbox = await openSwitcher();
+    await waitFor(() => {
+      expect(within(switcherRow(listbox, ASKING.name)).getByTestId('workspace-tabs-dropdown-reply-tag').textContent).toBe('Needs input');
+    });
+    expect(within(switcherRow(listbox, RUNNING.name)).queryByTestId('workspace-tabs-dropdown-reply-tag')).toBeNull();
   });
 
   it('keeps the live status glyph for a running project, with no unread dot', async () => {
