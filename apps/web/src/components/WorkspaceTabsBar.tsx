@@ -176,6 +176,10 @@ interface Props {
    * simply returns nothing readable in a workspace one.
    */
   workspaceContext?: WorkspaceCollabContext | null;
+  /** Whether a null `workspaceContext` is a settled signed-out reading (the
+   *  shell verifies via `workspaceIdentitySettledSignedOut`). Fail closed by
+   *  default: loading/unavailable reads are also null. */
+  workspaceSignedOut?: boolean;
   /**
    * The docked dropdown's per-row ⋮ menu (OPEND-2686 / OPEND-3128): 重命名 /
    * 复制项目 / 转入团队空间 / 删除, through the flows the rail's 最近项目 rows and
@@ -865,6 +869,7 @@ export function WorkspaceTabsBar({
   identityScopeKey,
   preserveSignedOutShareRoute = false,
   workspaceContext = null,
+  workspaceSignedOut = false,
   onRenameProject,
   onDuplicateProject,
   onDeleteProject,
@@ -1275,6 +1280,7 @@ export function WorkspaceTabsBar({
     onDelete: onDeleteProject,
     analyticsPage: 'home',
     workspaceContext,
+    workspaceSignedOut,
   });
   const duplicateFlow = useProjectDuplicateFlow({
     onDuplicate: onDuplicateProject,
