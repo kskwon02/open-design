@@ -56,14 +56,17 @@ vi.mock("@open-design/sidecar", async (importOriginal) => {
 import type { ToolPackConfig } from "@/config/index.js";
 import {
   buildDockerArgs,
+  classifyLinuxBuilderArtifacts,
   cleanupPackedLinuxNamespace,
   createLinuxDesktopLaunchEnv,
   inspectPackedLinuxApp,
   LINUX_APPIMAGE_EXECUTABLE_ARGS,
+  linuxRpmBuilderOptions,
   matchesAppImageProcess,
   renderDesktopTemplate,
   renderLinuxAppImageAppRun,
   renderLinuxPackagedMainEntry,
+  resolveLinuxElectronTargets,
   resolveLinuxLifecycleMode,
   resolveProductionInstallCommand,
   shouldRejectLinuxHeadlessInspectOptions,
@@ -580,7 +583,7 @@ describe("renderDesktopTemplate", () => {
   const template = `[Desktop Entry]
 Type=Application
 Name=Open Design (@@NAMESPACE@@)
-Exec=env -u ELECTRON_RUN_AS_NODE OD_PACKAGED_NAMESPACE=@@NAMESPACE@@ @@EXEC_PATH@@ --appimage-extract-and-run %U
+Exec=env -u ELECTRON_RUN_AS_NODE OD_PACKAGED_NAMESPACE=@@NAMESPACE@@ @@EXEC_PATH@@ %U
 Icon=@@ICON_PATH@@
 MimeType=x-scheme-handler/od;
 `;
@@ -593,7 +596,7 @@ MimeType=x-scheme-handler/od;
     });
     expect(out).toContain("Name=Open Design (default)");
     expect(out).toContain(
-      "Exec=env -u ELECTRON_RUN_AS_NODE OD_PACKAGED_NAMESPACE=default /home/u/.local/bin/Open-Design.default.AppImage --appimage-extract-and-run %U",
+      "Exec=env -u ELECTRON_RUN_AS_NODE OD_PACKAGED_NAMESPACE=default /home/u/.local/bin/Open-Design.default.AppImage %U",
     );
     expect(out).toContain("Icon=open-design-default");
   });
@@ -617,13 +620,13 @@ MimeType=x-scheme-handler/od;
     expect(out).toMatch(/^Exec=env -u ELECTRON_RUN_AS_NODE /m);
   });
 
-  it("preserves --appimage-extract-and-run on the Exec= line so menu launches bypass FUSE", () => {
+  it("does not force --appimage-extract-and-run on every menu launch", () => {
     const out = renderDesktopTemplate(template, {
       namespace: "ns",
       execPath: "/x",
       iconName: "open-design-ns",
     });
-    expect(out).toMatch(/^Exec=.*--appimage-extract-and-run .*%U$/m);
+    expect(out).not.toContain("--appimage-extract-and-run");
   });
 
   it("leaves no @@...@@ tokens unsubstituted", () => {
@@ -658,6 +661,65 @@ describe("renderLinuxPackagedMainEntry", () => {
 describe("LINUX_APPIMAGE_EXECUTABLE_ARGS", () => {
   it("keeps the AppImage no-sandbox fallback explicit for constrained Linux hosts", () => {
     expect([...LINUX_APPIMAGE_EXECUTABLE_ARGS]).toEqual(["--no-sandbox"]);
+  });
+});
+
+describe("resolveLinuxElectronTargets", () => {
+  it("keeps `all` on the single release-published AppImage target", () => {
+    expect(resolveLinuxElectronTargets("all")).toEqual(["AppImage"]);
+    expect(resolveLinuxElectronTargets("appimage")).toEqual(["AppImage"]);
+  });
+
+  it("maps the native rpm target and the unpacked dir target", () => {
+    expect(resolveLinuxElectronTargets("rpm")).toEqual(["rpm"]);
+    expect(resolveLinuxElectronTargets("dir")).toEqual(["dir"]);
+  });
+
+  it("rejects deb and build outputs that belong to other platforms", () => {
+    expect(() => resolveLinuxElectronTargets("deb" as never)).toThrow(/unsupported linux build output: deb/);
+    expect(() => resolveLinuxElectronTargets("dmg")).toThrow(/unsupported linux build output: dmg/);
+    expect(() => resolveLinuxElectronTargets("nsis")).toThrow(/unsupported linux build output: nsis/);
+  });
+});
+
+describe("linuxRpmBuilderOptions", () => {
+  it("pins fpm's single-threaded xz encoder for RPM payloads", () => {
+    expect(linuxRpmBuilderOptions(["rpm"])).toEqual({
+      fpm: ["--rpm-compression", "xz"],
+    });
+  });
+
+  it("leaves non-RPM targets on electron-builder's default", () => {
+    expect(linuxRpmBuilderOptions(["dir"])).toBeNull();
+    expect(linuxRpmBuilderOptions(["AppImage"])).toBeNull();
+  });
+});
+
+describe("classifyLinuxBuilderArtifacts", () => {
+  it("finds every artifact kind in one output directory", () => {
+    const root = "/work/out/linux/namespaces/default/builder";
+
+    expect(classifyLinuxBuilderArtifacts(
+      ["Open Design-default.AppImage", "Open Design-default.deb", "Open Design-default.rpm", "builder-debug.yml"],
+      root,
+    )).toEqual({
+      appImage: join(root, "Open Design-default.AppImage"),
+      deb: join(root, "Open Design-default.deb"),
+      rpm: join(root, "Open Design-default.rpm"),
+    });
+  });
+
+  it("returns nulls for artifact kinds that were not built", () => {
+    expect(classifyLinuxBuilderArtifacts(["Open Design-default.deb"], "/out")).toEqual({
+      appImage: null,
+      deb: "/out/Open Design-default.deb",
+      rpm: null,
+    });
+    expect(classifyLinuxBuilderArtifacts([], "/out")).toEqual({
+      appImage: null,
+      deb: null,
+      rpm: null,
+    });
   });
 });
 
@@ -729,6 +791,373 @@ describe("renderLinuxAppImageAppRun", () => {
       expect(await readFile(observedEnvPath, "utf8")).toBe(
         `APPIMAGE=${appRunPath}\nELECTRON_RUN_AS_NODE=unset\n`,
       );
+    } finally {
+      await rm(root, { force: true, recursive: true });
+    }
+  });
+});
+
+describe("renderLinuxAppImageAppRun sandbox policy", () => {
+  async function observeElectronArgs(options: {
+    args?: string[];
+    env?: NodeJS.ProcessEnv;
+    usernsProbeExitCode?: number;
+  }): Promise<string[]> {
+    const root = await mkdtemp(join(tmpdir(), "od-linux-apprun-sandbox-"));
+    const appDir = join(root, "AppDir");
+    const binDir = join(root, "bin");
+    const appRunPath = join(appDir, "AppRun");
+    const electronPath = join(appDir, "Open Design");
+    const argsPath = join(root, "args.txt");
+
+    try {
+      await mkdir(appDir, { recursive: true });
+      await mkdir(binDir, { recursive: true });
+      await writeFile(appRunPath, renderLinuxAppImageAppRun(), "utf8");
+      await chmod(appRunPath, 0o755);
+      await writeFile(
+        join(binDir, "unshare"),
+        `#!/bin/bash\nexit ${options.usernsProbeExitCode ?? 0}\n`,
+        "utf8",
+      );
+      await chmod(join(binDir, "unshare"), 0o755);
+      await writeFile(
+        electronPath,
+        `#!/bin/bash\nprintf '%s\\n' "$@" > ${JSON.stringify(argsPath)}\n`,
+        "utf8",
+      );
+      await chmod(electronPath, 0o755);
+
+      const isolatedEnv: NodeJS.ProcessEnv = { ...process.env };
+      delete isolatedEnv.OD_LINUX_SANDBOX;
+      delete isolatedEnv.APPIMAGE;
+      delete isolatedEnv.OD_APPIMAGE_EXTRACTED_RUN;
+
+      const child = spawn(appRunPath, options.args ?? [], {
+        env: {
+          ...isolatedEnv,
+          APPDIR: appDir,
+          PATH: `${binDir}:/usr/bin:/bin`,
+          ...options.env,
+        },
+        stdio: "ignore",
+      });
+      const exit = await new Promise<{ code: number | null; signal: NodeJS.Signals | null }>((resolve, reject) => {
+        child.once("error", reject);
+        child.once("exit", (code, signal) => resolve({ code, signal }));
+      });
+
+      expect(exit).toEqual({ code: 0, signal: null });
+      const raw = await readFile(argsPath, "utf8");
+      return raw.length === 0 ? [] : raw.trimEnd().split("\n");
+    } finally {
+      await rm(root, { force: true, recursive: true });
+    }
+  }
+
+  it("keeps the sandbox when unprivileged user namespaces work", async () => {
+    await expect(observeElectronArgs({ args: ["--flag"], usernsProbeExitCode: 0 }))
+      .resolves.toEqual(["--flag"]);
+  });
+
+  it("strips --no-sandbox from desktop-entry launches when the sandbox works", async () => {
+    await expect(observeElectronArgs({ args: ["--no-sandbox", "--flag"], usernsProbeExitCode: 0 }))
+      .resolves.toEqual(["--flag"]);
+  });
+
+  it("adds --no-sandbox when the user namespace probe fails", async () => {
+    await expect(observeElectronArgs({ args: ["--flag"], usernsProbeExitCode: 1 }))
+      .resolves.toEqual(["--flag", "--no-sandbox"]);
+  });
+
+  it("does not duplicate an explicit --no-sandbox fallback", async () => {
+    await expect(observeElectronArgs({ args: ["--no-sandbox"], usernsProbeExitCode: 1 }))
+      .resolves.toEqual(["--no-sandbox"]);
+  });
+
+  it("honors OD_LINUX_SANDBOX=off on hosts where the probe would pass", async () => {
+    await expect(observeElectronArgs({
+      args: ["--flag"],
+      env: { OD_LINUX_SANDBOX: "off" },
+      usernsProbeExitCode: 0,
+    })).resolves.toEqual(["--flag", "--no-sandbox"]);
+  });
+
+  it("honors OD_LINUX_SANDBOX=on on hosts where the probe would fail", async () => {
+    await expect(observeElectronArgs({
+      args: ["--no-sandbox", "--flag"],
+      env: { OD_LINUX_SANDBOX: "on" },
+      usernsProbeExitCode: 1,
+    })).resolves.toEqual(["--flag"]);
+  });
+});
+
+describe("renderLinuxAppImageAppRun cache", () => {
+  type CacheHarness = {
+    appRunPath: string;
+    argsPath: string;
+    cacheRoot: string;
+    envPath: string;
+    extractMarkerPath: string;
+    fallbackArgsPath: string;
+    fuseAppDir: string;
+    root: string;
+    runtimePath: string;
+    run: (options?: { args?: string[]; env?: NodeJS.ProcessEnv }) => Promise<{
+      code: number | null;
+      signal: NodeJS.Signals | null;
+      stderr: string;
+    }>;
+    writeCachedAppRun: (body?: string) => Promise<void>;
+    writeRuntime: (body: string) => Promise<void>;
+  };
+
+  const extractionRuntimeBody = `if [ "$1" = "--appimage-extract" ] ; then
+  mkdir -p squashfs-root
+  cp "$OD_TEST_CACHED_APPRUN" squashfs-root/AppRun
+  chmod +x squashfs-root/AppRun
+  printf 'extracted\\n' >> "$OD_TEST_EXTRACT_MARKER"
+  exit 0
+fi
+printf 'runtime-called\\n' >> "$OD_TEST_EXTRACT_MARKER"
+exit 97
+`;
+
+  async function createHarness(): Promise<CacheHarness> {
+    const root = await mkdtemp(join(tmpdir(), "od-linux-apprun-cache-"));
+    const fuseAppDir = join(root, "mount", ".mount_odcache");
+    const appRunPath = join(root, "AppRun");
+    const runtimePath = join(root, "Open Design-default.AppImage");
+    const cachedAppRunPath = join(root, "cached-AppRun");
+    const cacheRoot = join(root, "cache");
+    const argsPath = join(root, "args.txt");
+    const envPath = join(root, "env.txt");
+    const extractMarkerPath = join(root, "extract-marker.txt");
+    const fallbackArgsPath = join(root, "fallback-args.txt");
+
+    await mkdir(fuseAppDir, { recursive: true });
+    await writeFile(appRunPath, renderLinuxAppImageAppRun(), "utf8");
+    await chmod(appRunPath, 0o755);
+
+    const writeCachedAppRun = async (
+      body = `#!/bin/bash\nprintf '%s\\n' "$@" > "$OD_TEST_ARGS_PATH"\nprintf 'APPDIR=%s\\nAPPIMAGE=%s\\n' "$APPDIR" "$APPIMAGE" > "$OD_TEST_ENV_PATH"\n`,
+    ) => {
+      await writeFile(cachedAppRunPath, body, "utf8");
+      await chmod(cachedAppRunPath, 0o755);
+    };
+
+    const writeRuntime = async (body: string) => {
+      await writeFile(runtimePath, `#!/bin/bash\n${body}`, "utf8");
+      await chmod(runtimePath, 0o755);
+    };
+
+    const run = async (options: { args?: string[]; env?: NodeJS.ProcessEnv } = {}) => {
+      const env: NodeJS.ProcessEnv = {
+        ...process.env,
+        APPDIR: fuseAppDir,
+        APPIMAGE: runtimePath,
+        XDG_CACHE_HOME: cacheRoot,
+        OD_TEST_ARGS_PATH: argsPath,
+        OD_TEST_ENV_PATH: envPath,
+        OD_TEST_EXTRACT_MARKER: extractMarkerPath,
+        OD_TEST_FALLBACK_ARGS_PATH: fallbackArgsPath,
+        OD_TEST_CACHED_APPRUN: cachedAppRunPath,
+      };
+      delete env.OD_APPIMAGE_EXTRACTED_RUN;
+      Object.assign(env, options.env);
+
+      const child = spawn(appRunPath, options.args ?? [], {
+        env,
+        stdio: ["ignore", "ignore", "pipe"],
+      });
+      let stderr = "";
+      child.stderr?.on("data", (chunk) => {
+        stderr += String(chunk);
+      });
+      const exit = await new Promise<{ code: number | null; signal: NodeJS.Signals | null }>((resolve, reject) => {
+        child.once("error", reject);
+        // Wait for stdio to drain so stderr assertions see every byte.
+        child.once("close", (code, signal) => resolve({ code, signal }));
+      });
+      return { ...exit, stderr };
+    };
+
+    return {
+      appRunPath,
+      argsPath,
+      cacheRoot,
+      envPath,
+      extractMarkerPath,
+      fallbackArgsPath,
+      fuseAppDir,
+      root,
+      runtimePath,
+      run,
+      writeCachedAppRun,
+      writeRuntime,
+    };
+  }
+
+  it("no longer re-execs every FUSE launch through the runtime extractor", () => {
+    const out = renderLinuxAppImageAppRun();
+
+    expect(out).not.toContain('exec "$APPIMAGE" --appimage-extract-and-run');
+    expect(out).toContain('"$APPIMAGE" --appimage-extract >extract.log');
+    expect(out).toContain("XDG_CACHE_HOME");
+  });
+
+  it("uses a non-blocking launch lock instead of a timed wait", () => {
+    const out = renderLinuxAppImageAppRun();
+
+    expect(out).toContain('exec 8>"$cache_dir.lock"');
+    expect(out).toContain("flock -n 8");
+    expect(out).toContain("Open Design is already running");
+    expect(out).not.toContain("flock -w 600");
+  });
+
+  async function waitForFileText(path: string, expected: string, timeoutMs = 5_000): Promise<void> {
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+      try {
+        if ((await readFile(path, "utf8")) === expected) return;
+      } catch {
+        // The cached AppRun writes the marker after the lock is acquired.
+      }
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+    throw new Error(`timed out waiting for ${path} to contain ${JSON.stringify(expected)}`);
+  }
+
+  linuxOnlyIt("exits a second launch while the first holds the desktop lock", async () => {
+    const harness = await createHarness();
+
+    try {
+      await harness.writeCachedAppRun(
+        `#!/bin/bash\nprintf 'started\\n' >> "$OD_TEST_ARGS_PATH"\nsleep 2\n`,
+      );
+      await harness.writeRuntime(extractionRuntimeBody);
+
+      const first = harness.run({ args: ["--first"] });
+      await waitForFileText(harness.argsPath, "started\n");
+
+      const second = await harness.run({ args: ["--second"] });
+      expect(second).toMatchObject({ code: 0, signal: null });
+      expect(second.stderr).toContain("Open Design is already running");
+      expect(await readFile(harness.argsPath, "utf8")).toBe("started\n");
+
+      const firstResult = await first;
+      expect(firstResult).toMatchObject({ code: 0, signal: null });
+    } finally {
+      await rm(harness.root, { force: true, recursive: true });
+    }
+  });
+
+  linuxOnlyIt("extracts once into XDG_CACHE_HOME and reuses the cached AppRun", async () => {
+    const harness = await createHarness();
+
+    try {
+      await harness.writeCachedAppRun();
+      await harness.writeRuntime(extractionRuntimeBody);
+
+      const first = await harness.run({ args: ["--user-flag"] });
+      expect(first).toMatchObject({ code: 0, signal: null });
+      expect(await readFile(harness.extractMarkerPath, "utf8")).toBe("extracted\n");
+      expect(await readFile(harness.argsPath, "utf8")).toBe("--user-flag\n");
+      const cachedEnv = await readFile(harness.envPath, "utf8");
+      expect(cachedEnv).toContain(`APPDIR=${join(harness.cacheRoot, "open-design", "appimage")}`);
+      expect(cachedEnv).toContain(`APPIMAGE=${harness.runtimePath}`);
+
+      // A warm cache must not invoke the runtime at all; the same script
+      // records a non-extract invocation, so its absence proves the cache hit.
+      const second = await harness.run({ args: ["--second-flag"] });
+      expect(second).toMatchObject({ code: 0, signal: null });
+      expect(await readFile(harness.extractMarkerPath, "utf8")).toBe("extracted\n");
+      expect(await readFile(harness.argsPath, "utf8")).toBe("--second-flag\n");
+    } finally {
+      await rm(harness.root, { force: true, recursive: true });
+    }
+  });
+
+  linuxOnlyIt("keys the cache on the AppImage identity so a replaced file re-extracts", async () => {
+    const harness = await createHarness();
+
+    try {
+      await harness.writeCachedAppRun();
+      await harness.writeRuntime(extractionRuntimeBody);
+      await harness.run({ args: ["--first"] });
+      expect(await readFile(harness.extractMarkerPath, "utf8")).toBe("extracted\n");
+
+      // Changing the runtime's size changes the cache key.
+      await harness.writeRuntime(`${extractionRuntimeBody}\n# rebuilt\n`);
+      await harness.run({ args: ["--second"] });
+      expect(await readFile(harness.extractMarkerPath, "utf8")).toBe("extracted\nextracted\n");
+      expect(await readFile(harness.argsPath, "utf8")).toBe("--second\n");
+    } finally {
+      await rm(harness.root, { force: true, recursive: true });
+    }
+  });
+
+  linuxOnlyIt("falls back to the mounted payload when extraction fails", async () => {
+    const harness = await createHarness();
+
+    try {
+      await harness.writeRuntime("exit 1\n");
+      await writeFile(
+        join(harness.fuseAppDir, "Open Design"),
+        `#!/bin/bash\nprintf '%s\\n' "$@" > "$OD_TEST_FALLBACK_ARGS_PATH"\n`,
+        "utf8",
+      );
+      await chmod(join(harness.fuseAppDir, "Open Design"), 0o755);
+
+      const result = await harness.run({
+        args: ["--flag"],
+        env: { OD_LINUX_SANDBOX: "on" },
+      });
+      expect(result).toMatchObject({ code: 0, signal: null });
+      expect(await readFile(harness.fallbackArgsPath, "utf8")).toBe("--flag\n");
+      expect(result.stderr).toContain("could not prepare the AppImage cache");
+    } finally {
+      await rm(harness.root, { force: true, recursive: true });
+    }
+  });
+
+  linuxOnlyIt("does not re-enter the cache when the runtime already extracted", async () => {
+    const harness = await createHarness();
+
+    try {
+      await harness.writeRuntime(`printf 'runtime-called\\n' >> "$OD_TEST_EXTRACT_MARKER"\nexit 97\n`);
+      await writeFile(
+        join(harness.fuseAppDir, "Open Design"),
+        `#!/bin/bash\nprintf '%s\\n' "$@" > "$OD_TEST_FALLBACK_ARGS_PATH"\n`,
+        "utf8",
+      );
+      await chmod(join(harness.fuseAppDir, "Open Design"), 0o755);
+
+      const result = await harness.run({
+        args: ["--flag"],
+        env: { OD_APPIMAGE_EXTRACTED_RUN: "1", OD_LINUX_SANDBOX: "on" },
+      });
+      expect(result).toMatchObject({ code: 0, signal: null });
+      expect(await readFile(harness.fallbackArgsPath, "utf8")).toBe("--flag\n");
+      await expect(access(harness.extractMarkerPath)).rejects.toThrow();
+    } finally {
+      await rm(harness.root, { force: true, recursive: true });
+    }
+  });
+
+  linuxOnlyIt("renders a bash script that parses cleanly", async () => {
+    const root = await mkdtemp(join(tmpdir(), "od-linux-apprun-syntax-"));
+    const scriptPath = join(root, "AppRun");
+
+    try {
+      await writeFile(scriptPath, renderLinuxAppImageAppRun(), "utf8");
+      const child = spawn("bash", ["-n", scriptPath], { stdio: "ignore" });
+      const exit = await new Promise<{ code: number | null; signal: NodeJS.Signals | null }>((resolve, reject) => {
+        child.once("error", reject);
+        child.once("exit", (code, signal) => resolve({ code, signal }));
+      });
+
+      expect(exit).toEqual({ code: 0, signal: null });
     } finally {
       await rm(root, { force: true, recursive: true });
     }
@@ -934,6 +1363,30 @@ describe("matchesAppImageProcess", () => {
       installPath,
     );
     expect(ok).toBe(true);
+  });
+
+  it("matches AppRun cache mode (executable under open-design/appimage/<key>/<binary>)", () => {
+    const ok = matchesAppImageProcess(
+      {
+        pid: 1234,
+        executable: "/home/u/.cache/open-design/appimage/123456-7890/Open Design",
+        env: { APPIMAGE: installPath },
+      },
+      installPath,
+    );
+    expect(ok).toBe(true);
+  });
+
+  it("rejects cache mode with mismatched APPIMAGE env", () => {
+    const ok = matchesAppImageProcess(
+      {
+        pid: 1234,
+        executable: "/home/u/.cache/open-design/appimage/123456-7890/Open Design",
+        env: { APPIMAGE: "/elsewhere/Other.AppImage" },
+      },
+      installPath,
+    );
+    expect(ok).toBe(false);
   });
 
   it("rejects extract-and-run mode with mismatched APPIMAGE env", () => {

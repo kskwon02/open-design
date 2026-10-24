@@ -18,6 +18,7 @@ import {
   findSidecarProcesses,
   getSidecarStatus,
   invokeSidecar,
+  SidecarLaunchConvergenceError,
   stopSidecars,
   type SidecarStamp,
 } from "@open-design/sidecar";
@@ -39,6 +40,11 @@ const execFileAsync = promisify(execFile);
 
 const PRODUCT_NAME = "Open Design";
 const APP_IMAGE_PRODUCT_NAME = "Open-Design";
+// First launch after a build/install extracts the whole AppImage payload into
+// the user cache before Electron starts. The payload is large enough that the
+// extraction alone can take a couple of minutes on a slow disk, so the start
+// command waits longer than a warm launch would need.
+const LINUX_APPIMAGE_LAUNCH_TIMEOUT_MS = 600_000;
 const DESKTOP_LOG_ECHO_ENV = "OD_DESKTOP_LOG_ECHO";
 // The containerized build sets this to the standalone pnpm binary fetched by
 // buildDockerArgs; runProductionInstall reads it to avoid invoking `npm` inside
@@ -75,6 +81,49 @@ export function sanitizeNamespace(value: string): string {
 
 export type LinuxLifecycleAction = "cleanup" | "install" | "start" | "stop" | "uninstall";
 export type LinuxLifecycleMode = "appimage" | "headless";
+
+// electron-builder's Linux target names. `all` stays AppImage-only on purpose:
+// the release pipeline publishes exactly one Linux artifact, and adding
+// optional formats must not make a release build depend on distro tooling
+// (rpmbuild) that the release lane does not validate.
+export type LinuxElectronTarget = "AppImage" | "dir" | "rpm";
+
+export function resolveLinuxElectronTargets(to: ToolPackConfig["to"]): LinuxElectronTarget[] {
+  switch (to) {
+    case "dir":
+      return ["dir"];
+    case "rpm":
+      return ["rpm"];
+    case "appimage":
+    case "all":
+      return ["AppImage"];
+    default:
+      throw new Error(`unsupported linux build output: ${to}`);
+  }
+}
+
+/**
+ * RPM packaging options that keep the payload encoder memory-bounded.
+ *
+ * electron-builder rewrites its `"xz"` default to fpm's `"xzmt"` (threaded
+ * xz). On a 2.5 GB payload that encoder peaks at several times the payload
+ * size and gets OOM-killed on ordinary 16 GB hosts. fpm accepts a later
+ * `--rpm-compression` and the last value wins, so pin the single-threaded
+ * encoder explicitly. The resulting RPM is the same size; it just takes longer
+ * to build and uses a fraction of the RAM.
+ */
+export function linuxRpmBuilderOptions(
+  targets: readonly LinuxElectronTarget[],
+): { fpm: string[] } | null {
+  if (!targets.includes("rpm")) return null;
+  return { fpm: ["--rpm-compression", "xz"] };
+}
+
+export type LinuxArtifacts = {
+  appImage: string | null;
+  deb: string | null;
+  rpm: string | null;
+};
 
 export function resolveLinuxLifecycleMode(
   options: { headless?: boolean },
@@ -280,7 +329,6 @@ set -e
 
 THIS="$0"
 args=("$@")
-NUMBER_OF_ARGS="$#"
 
 if [ -z "$APPDIR" ] ; then
   path="$(dirname "$(readlink -f "\${THIS}")")"
@@ -290,6 +338,73 @@ if [ -z "$APPDIR" ] ; then
   APPDIR="$path"
 fi
 
+# A FUSE-mounted AppImage reads every payload file through a userspace daemon,
+# which makes the packaged daemon's cold start several times slower than the
+# same payload read from a local directory. Extract once into a per-identity
+# cache and re-exec the cached AppRun on every later launch instead of paying
+# that cost again. The cache key tracks the AppImage path, size, and mtime, so
+# replacing the AppImage never reuses a stale payload.
+appimage_cache_dir() {
+  if [ -n "\${XDG_CACHE_HOME:-}" ] ; then
+    cache_root="$XDG_CACHE_HOME"
+  elif [ -n "\${HOME:-}" ] ; then
+    cache_root="$HOME/.cache"
+  else
+    cache_root="\${TMPDIR:-/tmp}/open-design-cache-\${UID:-0}"
+  fi
+  key="$(printf '%s' "$APPIMAGE" | cksum | cut -d' ' -f1)-$(stat -c '%s-%Y' "$APPIMAGE" 2>/dev/null || printf 'unknown')"
+  printf '%s/open-design/appimage/%s' "$cache_root" "$key"
+}
+
+# The runtime's extract-and-run flag is still a valid manual fallback, but it
+# extracts before this script starts and therefore cannot populate this cache.
+# Only the runtime's FUSE mount (APPDIR under a */.mount_* directory) re-execs
+# here; an extracted run (APPDIR=/tmp/appimage_extracted_*) continues normally.
+case "\${APPDIR:-}" in
+  */.mount_*)
+    if [ -z "\${OD_APPIMAGE_EXTRACTED_RUN:-}" ] && [ -n "\${APPIMAGE:-}" ] ; then
+      export OD_APPIMAGE_EXTRACTED_RUN=1
+      if cache_dir="$(appimage_cache_dir 2>/dev/null)" ; then
+        cache_parent="$(dirname "$cache_dir")"
+        if mkdir -p "$cache_parent" 2>/dev/null ; then
+          # A non-blocking launch lock is held for the desktop lifetime. It
+          # prevents rapid repeated clicks from starting competing runtimes and
+          # also serializes the cold extraction: a second launch exits instead
+          # of waiting on a wedged extractor. The fd stays open across exec so
+          # the lock covers the whole desktop process tree.
+          if command -v flock >/dev/null 2>&1 && exec 8>"$cache_dir.lock" ; then
+            if ! flock -n 8 ; then
+              echo "open-design: Open Design is already running." >&2
+              exit 0
+            fi
+          fi
+          if [ ! -x "$cache_dir/AppRun" ] ; then
+            extract_dir="$cache_parent/.extract.$$"
+            rm -rf "$extract_dir"
+            if mkdir -p "$extract_dir" && ( cd "$extract_dir" && "$APPIMAGE" --appimage-extract >extract.log 2>&1 ) && [ -x "$extract_dir/squashfs-root/AppRun" ] ; then
+              rm -rf "$cache_dir"
+              mv "$extract_dir/squashfs-root" "$cache_dir" 2>/dev/null || true
+            else
+              if [ -f "$extract_dir/extract.log" ] ; then
+                mv "$extract_dir/extract.log" "$cache_parent/extract.log" 2>/dev/null || true
+              fi
+              echo "open-design: could not prepare the AppImage cache; see $cache_parent/extract.log" >&2
+            fi
+            rm -rf "$extract_dir"
+          fi
+          if [ -x "$cache_dir/AppRun" ] ; then
+            APPDIR="$cache_dir"
+            export APPDIR
+            exec "$cache_dir/AppRun" "\${args[@]}"
+          fi
+        fi
+        # Cache setup failed (read-only cache root, full disk, ...). Continue
+        # from the FUSE mount so the app still starts, just with slower reads.
+      fi
+    fi
+    ;;
+esac
+
 export PATH="\${APPDIR}:\${APPDIR}/usr/sbin:\${PATH}"
 export XDG_DATA_DIRS="./share/:/usr/share/gnome:/usr/local/share/:/usr/share/:\${XDG_DATA_DIRS}"
 export LD_LIBRARY_PATH="\${APPDIR}/usr/lib:\${LD_LIBRARY_PATH}"
@@ -297,6 +412,40 @@ export XDG_DATA_DIRS="\${APPDIR}"/usr/share/:"\${XDG_DATA_DIRS}":/usr/share/gnom
 export GSETTINGS_SCHEMA_DIR="\${APPDIR}/usr/share/glib-2.0/schemas:\${GSETTINGS_SCHEMA_DIR}"
 
 BIN="$APPDIR/${PRODUCT_NAME}"
+
+# Chromium's namespace sandbox needs unprivileged user namespaces. Some hosts
+# disable them (hardened kernels, kernel.unprivileged_userns_clone=0) or gate
+# them behind AppArmor (Ubuntu 24.04+: kernel.apparmor_restrict_unprivileged_userns=1).
+# Probe the capability instead of shipping --no-sandbox to every user: a probe
+# that cannot run is treated as "unavailable" so the app still starts, and
+# OD_LINUX_SANDBOX=on|off lets a user override either direction.
+sandbox_unavailable() {
+  case "\${OD_LINUX_SANDBOX:-auto}" in
+    on) return 1 ;;
+    off) return 0 ;;
+  esac
+  command -v unshare >/dev/null 2>&1 || return 0
+  ! unshare -Ur true >/dev/null 2>&1
+}
+
+if sandbox_unavailable ; then
+  sandbox_flag_present=0
+  for arg in "\${args[@]}" ; do
+    [ "$arg" = "--no-sandbox" ] && sandbox_flag_present=1
+  done
+  if [ "$sandbox_flag_present" = 0 ] ; then
+    args+=("--no-sandbox")
+  fi
+else
+  # Desktop-integration tooling (including electron-builder's generated
+  # AppImage entry) passes --no-sandbox unconditionally. Drop it when the host
+  # can actually sandbox, so the fallback stays a fallback.
+  filtered=()
+  for arg in "\${args[@]}" ; do
+    [ "$arg" = "--no-sandbox" ] || filtered+=("$arg")
+  done
+  args=("\${filtered[@]}")
+fi
 
 if [ -z "$APPIMAGE_EXIT_AFTER_INSTALL" ] ; then
   trap atexit EXIT
@@ -308,11 +457,7 @@ atexit()
 {
   if [ $isEulaAccepted == 1 ] ; then
     unset ELECTRON_RUN_AS_NODE
-    if [ $NUMBER_OF_ARGS -eq 0 ] ; then
-      exec "$BIN"
-    else
-      exec "$BIN" "\${args[@]}"
-    fi
+    exec "$BIN" "\${args[@]}"
   fi
 }
 
@@ -336,13 +481,16 @@ export function matchesAppImageProcess(
   installPath: string,
 ): boolean {
   if (snapshot.executable === installPath) return true;
-  // Two AppImage launch modes leave different executable paths in /proc/<pid>/exe:
+  // Three AppImage launch modes leave different executable paths in /proc/<pid>/exe:
   //   FUSE-mounted: /tmp/.mount_<hex>/AppRun
   //   --appimage-extract-and-run: /tmp/appimage_extracted_<hex>/<binary>
-  // In both cases the AppImage runtime sets $APPIMAGE to the original install path.
+  //   AppRun cache: <cache-root>/open-design/appimage/<key>/<binary>
+  // In all three cases the AppImage runtime (or our AppRun) sets $APPIMAGE to
+  // the original install path.
   const isMountedRunner = /^\/tmp\/\.mount_[^/]+\/AppRun$/.test(snapshot.executable);
   const isExtractedRunner = /^\/tmp\/appimage_extracted_[^/]+\/[^/]+$/.test(snapshot.executable);
-  if ((isMountedRunner || isExtractedRunner) && snapshot.env.APPIMAGE === installPath) {
+  const isCachedRunner = /\/open-design\/appimage\/[^/]+\/[^/]+$/.test(snapshot.executable);
+  if ((isMountedRunner || isExtractedRunner || isCachedRunner) && snapshot.env.APPIMAGE === installPath) {
     return true;
   }
 
@@ -540,6 +688,7 @@ async function writeAssembledApp(
     dependencies,
     description: "Local-first design product: detects your installed code-agent CLI, runs design skills + design systems, streams artifacts into a sandboxed preview.",
     author: "Open Design Team",
+    license: "Apache-2.0",
     repository: {
       type: "git",
       url: "https://github.com/nexu-io/open-design.git"
@@ -582,14 +731,18 @@ async function writeLinuxAppImageAppRun(paths: LinuxPaths): Promise<void> {
 // --- Step 5: writeLinuxBuilderConfig helper ---
 
 async function writeLinuxBuilderConfig(config: ToolPackConfig, paths: LinuxPaths): Promise<void> {
-  const target = config.to === "dir" ? ["dir"] : ["AppImage"];
+  const targets = resolveLinuxElectronTargets(config.to);
+  const buildsAppImage = targets.includes("AppImage");
+  const rpmOptions = linuxRpmBuilderOptions(targets);
   const namespaceToken = sanitizeNamespace(config.namespace);
   const packagedVersion = await readPackagedVersion(config);
   const packageVersion = electronBuilderVersionForAppVersion(packagedVersion);
 
   const builderConfig: Record<string, unknown> = {
     appId: "io.open-design.desktop",
-    artifactName: `${PRODUCT_NAME}-${namespaceToken}.\${ext}`,
+    artifactName: buildsAppImage
+      ? `${PRODUCT_NAME}-${namespaceToken}.\${ext}`
+      : `open-design-${namespaceToken}.\${ext}`,
     asar: false,
     buildDependenciesFromSource: false,
     compression: "maximum",
@@ -617,24 +770,32 @@ async function writeLinuxBuilderConfig(config: ToolPackConfig, paths: LinuxPaths
       // process.resourcesPath by the desktop main at runtime).
       domToPptxBundleResource(config),
     ],
-    ...(config.to === "dir"
-      ? {}
-      : {
+    ...(buildsAppImage
+      ? {
           extraFiles: [
             {
               from: paths.appImageAppRunPath,
               to: "AppRun",
             },
           ],
-        }),
+        }
+      : {}),
     files: ["**/*", "!**/node_modules/.bin", "!**/node_modules/electron{,/**/*}"],
     icon: linuxResources.icon,
     linux: {
-      target,
+      target: targets,
       icon: linuxResources.icon,
       category: "Development",
       synopsis: "Open Design",
       maintainer: "Open Design Contributors",
+      vendor: "Open Design Team",
+      // Native packages cannot rely on the AppImage AppRun sandbox probe, and
+      // electron-builder does not install a setuid chrome-sandbox helper. On
+      // hosts whose AppArmor policy restricts unprivileged user namespaces
+      // (Ubuntu 24.04+) the packaged app would therefore refuse to start, so
+      // native packages take the same explicit fallback the AppImage uses when
+      // its probe fails.
+      ...(buildsAppImage ? {} : { executableArgs: [...LINUX_APPIMAGE_EXECUTABLE_ARGS] }),
     },
     // Keep the AppImage launch fallback explicit. Our top-level AppRun wrapper
     // clears ELECTRON_RUN_AS_NODE before these Chromium flags reach Electron,
@@ -642,6 +803,7 @@ async function writeLinuxBuilderConfig(config: ToolPackConfig, paths: LinuxPaths
     appImage: {
       executableArgs: [...LINUX_APPIMAGE_EXECUTABLE_ARGS],
     },
+    ...(rpmOptions != null ? { rpm: rpmOptions } : {}),
     nodeGypRebuild: false,
     npmRebuild: false,
     productName: PRODUCT_NAME,
@@ -671,17 +833,36 @@ async function runElectronBuilderLinux(config: ToolPackConfig, paths: LinuxPaths
   });
 }
 
-async function findBuiltAppImage(paths: LinuxPaths): Promise<string | null> {
-  if (!(await pathExists(paths.appBuilderOutputRoot))) return null;
-  const entries = await readdir(paths.appBuilderOutputRoot);
-  const appImage = entries.find((entry) => entry.endsWith(".AppImage"));
-  return appImage ? join(paths.appBuilderOutputRoot, appImage) : null;
+export function classifyLinuxBuilderArtifacts(
+  entries: readonly string[],
+  outputRoot: string,
+): LinuxArtifacts {
+  const find = (suffix: string): string | null => {
+    const match = entries.find((entry) => entry.endsWith(suffix));
+    return match == null ? null : join(outputRoot, match);
+  };
+  return {
+    appImage: find(".AppImage"),
+    deb: find(".deb"),
+    rpm: find(".rpm"),
+  };
+}
+
+async function findBuiltLinuxArtifacts(paths: LinuxPaths): Promise<LinuxArtifacts> {
+  if (!(await pathExists(paths.appBuilderOutputRoot))) {
+    return { appImage: null, deb: null, rpm: null };
+  }
+  return classifyLinuxBuilderArtifacts(
+    await readdir(paths.appBuilderOutputRoot),
+    paths.appBuilderOutputRoot,
+  );
 }
 
 // --- Step 7: packLinux orchestrator + result type + stub for runBuildInContainer ---
 
 export type LinuxPackResult = {
   appImagePath: string | null;
+  artifacts: LinuxArtifacts;
   outputRoot: string;
   resourceRoot: string;
   runtimeNamespaceRoot: string;
@@ -693,9 +874,12 @@ export async function packLinux(config: ToolPackConfig): Promise<LinuxPackResult
   if (config.containerized) {
     await runBuildInContainer(config);
     const paths = resolveLinuxPaths(config);
-    const appImagePath = config.to === "dir" ? null : await findBuiltAppImage(paths);
+    const artifacts = config.to === "dir"
+      ? { appImage: null, deb: null, rpm: null }
+      : await findBuiltLinuxArtifacts(paths);
     return {
-      appImagePath,
+      appImagePath: artifacts.appImage,
+      artifacts,
       outputRoot: paths.appBuilderOutputRoot,
       resourceRoot: paths.resourceRoot,
       runtimeNamespaceRoot: config.roots.runtime.namespaceRoot,
@@ -713,15 +897,18 @@ export async function packLinux(config: ToolPackConfig): Promise<LinuxPackResult
   await copyResourceTree(config, paths);
   const tarballs = await collectWorkspaceTarballs(config, paths);
   await writeAssembledApp(config, paths, tarballs);
-  if (config.to !== "dir") {
+  if (resolveLinuxElectronTargets(config.to).includes("AppImage")) {
     await writeLinuxAppImageAppRun(paths);
   }
   await writeLinuxBuilderConfig(config, paths);
   await runElectronBuilderLinux(config, paths);
 
-  const appImagePath = config.to === "dir" ? null : await findBuiltAppImage(paths);
+  const artifacts = config.to === "dir"
+    ? { appImage: null, deb: null, rpm: null }
+    : await findBuiltLinuxArtifacts(paths);
   return {
-    appImagePath,
+    appImagePath: artifacts.appImage,
+    artifacts,
     outputRoot: paths.appBuilderOutputRoot,
     resourceRoot: paths.resourceRoot,
     runtimeNamespaceRoot: config.roots.runtime.namespaceRoot,
@@ -793,12 +980,24 @@ async function bestEffortRun(bin: string, args: string[]): Promise<"ok" | "missi
   }
 }
 
+async function requireBuiltAppImage(paths: LinuxPaths, action: string): Promise<string> {
+  const artifacts = await findBuiltLinuxArtifacts(paths);
+  if (artifacts.appImage != null) return artifacts.appImage;
+  const nativePackage = artifacts.deb ?? artifacts.rpm;
+  if (nativePackage != null) {
+    throw new Error(
+      `this build produced a native package, not an AppImage: ${nativePackage}. ` +
+        `Install it with your distro package manager (\`sudo apt install ./<file>.deb\` or ` +
+        `\`sudo dnf install ./<file>.rpm\`), or rebuild with \`--to appimage\` for the ` +
+        `AppImage lifecycle (${action}).`,
+    );
+  }
+  throw new Error(`no AppImage found in builder output; run \`tools-pack linux build\` first (${action})`);
+}
+
 export async function installPackedLinuxApp(config: ToolPackConfig): Promise<LinuxInstallResult> {
   const paths = resolveLinuxPaths(config);
-  const builtAppImage = await findBuiltAppImage(paths);
-  if (builtAppImage == null) {
-    throw new Error("no AppImage found in builder output; run `tools-pack linux build` first");
-  }
+  const builtAppImage = await requireBuiltAppImage(paths, "install");
 
   await mkdir(dirname(paths.installAppImagePath), { recursive: true });
   await mkdir(dirname(paths.installDesktopFilePath), { recursive: true });
@@ -931,7 +1130,7 @@ async function waitForLinuxStatus<T>(stamps: readonly SidecarStamp[], timeoutMs:
 export async function startPackedLinuxApp(config: ToolPackConfig): Promise<LinuxStartResult> {
   const paths = resolveLinuxPaths(config);
   const installed = await pathExists(paths.installAppImagePath);
-  const built = !installed ? await findBuiltAppImage(paths) : null;
+  const built = !installed ? (await findBuiltLinuxArtifacts(paths)).appImage : null;
   const appImagePath = installed ? paths.installAppImagePath : built;
   const source: LinuxStartSource = installed ? "installed" : "built";
 
@@ -949,14 +1148,11 @@ export async function startPackedLinuxApp(config: ToolPackConfig): Promise<Linux
     linuxStamp(config, { source: SIDECAR_SOURCES.PACKAGED }),
   ];
 
-  // --appimage-extract-and-run bypasses FUSE-mounted SquashFS, which is too slow
-  // for daemon startup on first launch (smoke testing showed startup exceeded the
-  // packaged sidecar's 35-second timeout when running from FUSE).
-  const convergence = await convergeSidecarLaunch({
-    args: ["--appimage-extract-and-run"],
+  const launch = (args: string[], extraEnv: NodeJS.ProcessEnv = {}) => convergeSidecarLaunch({
+    args,
     command: appImagePath,
     cwd: dirname(appImagePath),
-    env: createLinuxDesktopLaunchEnv(config, stamp),
+    env: { ...createLinuxDesktopLaunchEnv(config, stamp), ...extraEnv },
     logFd: null,
     resources: {
       dataRoot: join(config.roots.runtime.namespaceRoot, "data"),
@@ -965,16 +1161,33 @@ export async function startPackedLinuxApp(config: ToolPackConfig): Promise<Linux
       runtimeRoot: join(config.roots.runtime.namespaceRoot, "runtime"),
     },
     stamp,
-  }, { ownerStamps: launchStamps, timeoutMs: 60_000 });
+  }, { ownerStamps: launchStamps, timeoutMs: LINUX_APPIMAGE_LAUNCH_TIMEOUT_MS });
 
-  // 60s ceiling: AppImage --appimage-extract-and-run unpacks ~200MB to /tmp on
-  // first launch before exec'ing the inner electron, which adds substantial
-  // overhead vs mac's direct .app launch.
-  //
-  const active = await waitForLinuxStatus<DesktopStatusSnapshot>(launchStamps, 60_000);
+  // AppRun extracts the payload once into a user cache and re-execs the cached
+  // copy on later launches, so the first start after a build or install pays
+  // the extraction cost and the timeout below covers that first run.
+  let convergence: Awaited<ReturnType<typeof launch>>;
+  try {
+    convergence = await launch([]);
+  } catch (error) {
+    // The AppImage runtime needs libfuse.so.2 to mount its SquashFS. Minimal
+    // hosts and containers often lack it, so retry through the runtime's own
+    // extract path, which needs no FUSE (and cannot use the AppRun cache).
+    // NO_CLEANUP keeps that tree alive for the detached sidecars; otherwise the
+    // runtime deletes it as soon as the launcher exits.
+    if (!(error instanceof SidecarLaunchConvergenceError)) throw error;
+    convergence = await launch(["--appimage-extract-and-run"], { NO_CLEANUP: "1" });
+  }
+
+  const active = await waitForLinuxStatus<DesktopStatusSnapshot>(
+    launchStamps,
+    LINUX_APPIMAGE_LAUNCH_TIMEOUT_MS,
+  );
   if (active == null) {
     await stopSidecars(launchStamps.map((candidate) => ({ stamp: candidate }))).catch(() => undefined);
-    throw new Error(`desktop sidecar did not become ready within 60s for ${config.namespace}`);
+    throw new Error(
+      `desktop sidecar did not become ready within ${LINUX_APPIMAGE_LAUNCH_TIMEOUT_MS / 1000}s for ${config.namespace}`,
+    );
   }
 
   return {

@@ -12,6 +12,7 @@ Read `tools/pack/CACHE.md` before changing any build-cache node key, adding a ca
 - Windows registry observation/cleanup must go through `reg.exe` and stay scoped to entries matching the namespace install/uninstaller paths.
 - Windows lifecycle logs must expose NSIS automation logs/markers/timings in addition to app runtime logs.
 - Linux AppImage build/install/start/stop/logs/uninstall/cleanup smoke commands.
+- Linux native RPM package build target (`--to rpm`) for end-user hand-off; these are build artifacts only and do not join the AppImage lifecycle or release publishing. The `.deb` target is tracked in #6010; do not add a competing implementation here.
 - Linux headless (no-Electron) install/start/stop via `--headless` flag on `install`, `start`, and `stop`.
 - Linux containerized builds via `electronuserland/builder` Docker image for distro-agnostic glibc compat.
 - Consuming sidecar/process/path primitives from `@open-design/sidecar-proto`, `@open-design/sidecar`, and `@open-design/platform`.
@@ -33,6 +34,9 @@ Read `tools/pack/CACHE.md` before changing any build-cache node key, adding a ca
 - Do not let namespace-named `.app` installs change data/log/runtime/cache path conventions.
 - `--dir` controls tools-pack output/runtime/install validation roots only. It must not be treated as the cache root. The default workspace tools-pack cache is the hot path. `--cache-dir` is a special-case escape hatch for cache isolation or cold-cache validation, not a routine QA/build parameter.
 - Use `--portable` for public/release artifacts so packaged config does not bake local tools-pack runtime roots from the build machine.
+- Linux AppImage launches use a per-identity extraction cache under `${XDG_CACHE_HOME:-$HOME/.cache}/open-design/appimage/`. Keep the key tied to the AppImage path, size, and mtime; do not force `--appimage-extract-and-run` on every desktop launch, because that re-extracts the full payload each time and cannot populate the cache. Keep the flag as a manual/fallback path only.
+- The cached AppRun holds a non-blocking `flock` for the desktop lifetime. A second launch must exit with `Open Design is already running.` instead of starting a competing runtime or waiting on a timed lock; the same lock serializes the one-time extraction.
+- Native RPM packages carry `linux.executableArgs: ["--no-sandbox"]` because electron-builder installs no setuid `chrome-sandbox` helper. Do not remove that fallback without replacing it with a working sandbox helper.
 - Pack resource files used by electron-builder belong under `tools/pack/resources/`; do not point pack logic at Downloads, web public assets, docs assets, or other app-owned resource paths.
 - For ordinary Windows NSIS smoke tests, use short namespaces such as `rg`, `smoke`, or `nsis-a`. NSIS extracts deeply nested Next.js standalone files under the namespace-scoped install directory; long namespaces can push installed paths past the traditional Windows 260-character limit even when builder `win-unpacked` output is correct. During merge regression, namespace `regression-merge-nsis` produced an installed path length of 264 characters and missed `next/dist/server/route-matcher-providers/helpers/cached-route-matcher-provider.js` in the installed directory, while the same NSIS smoke passed with namespace `rg`. Use long namespaces only when intentionally testing installer path-length behavior.
 

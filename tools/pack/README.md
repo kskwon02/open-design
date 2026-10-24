@@ -96,6 +96,7 @@ Local lifecycle commands:
 
 - `tools-pack linux build --to all` (default; produces AppImage)
 - `tools-pack linux build --to appimage` (explicit AppImage)
+- `tools-pack linux build --to rpm` (native Fedora/RHEL/openSUSE package)
 - `tools-pack linux build --to dir` (unpacked output for fast iteration)
 - `tools-pack linux build --containerized` (run electron-builder inside `electronuserland/builder:base` Docker for a wider glibc compatibility target — requires Docker)
 - `tools-pack linux build --to all --portable` (release artifacts that must not bake local tools-pack runtime paths)
@@ -138,11 +139,43 @@ Headless mode targets environments without a display (WSL2, headless servers, CI
 
 `logs` always reads `logs/desktop/latest.log` regardless of mode, so headless output is visible via `tools-pack linux logs`.
 
-### AppImage launch mode (FUSE caveat)
+### AppImage launch mode (extraction cache)
 
-`tools-pack linux start` always spawns the AppImage with `--appimage-extract-and-run`. Smoke testing on Ubuntu 24.04 and Arch Linux showed that direct FUSE-mounted AppImage launches make Node module loads (Express, better-sqlite3, etc.) slow enough that the daemon sidecar consistently failed to clear `apps/packaged`'s 35-second startup timeout. Extract-and-run unpacks the AppImage into `/tmp/appimage_extracted_<hex>/` and exec's the inner Electron from there, bypassing FUSE and getting daemon boot in under 5 seconds — roughly an order-of-magnitude improvement.
+The AppImage runtime mounts the payload through FUSE (`/tmp/.mount_<hex>`), and a plain FUSE mount serves every file through a userspace daemon. On Ubuntu 24.04 and Arch Linux that was slow enough for the packaged daemon to miss its startup budget, because the daemon demand-pages its payload through squashfuse.
 
-**Implication for end-users:** if launching the installed AppImage manually (not via `tools-pack linux start`), pass `--appimage-extract-and-run` yourself, or rely on a desktop launcher / `appimage-launcher` daemon that handles extract-and-run automatically.
+The shipped `AppRun` wrapper extracts the payload once into `${XDG_CACHE_HOME:-$HOME/.cache}/open-design/appimage/<key>/` and re-execs the cached copy on every later launch. The key covers the AppImage path, size, and mtime, so replacing the file re-extracts instead of running a stale payload. The first launch pays the extraction cost (roughly two minutes for this payload on a slow disk); later launches start directly from the cache. The cache is not pruned automatically — remove old versions with `rm -rf ~/.cache/open-design/appimage` when reclaiming disk.
+
+The cached path also holds a non-blocking launch lock for the desktop lifetime. A second click exits with `Open Design is already running.` instead of starting a competing runtime, and the same lock serializes the one-time extraction, so a second launch never waits on a wedged extractor.
+
+`--appimage-extract-and-run` remains a manual fallback for hosts without FUSE: it unpacks into `/tmp/appimage_extracted_<hex>/` and needs no `libfuse2`, but it extracts before `AppRun` starts and therefore cannot populate the cache. `tools-pack linux start` launches the AppImage normally so it exercises the same cache path, and retries through `--appimage-extract-and-run` with `NO_CLEANUP=1` if the runtime cannot mount. Its first-start budget is 600s to cover a cold extraction on slower disks.
+
+**What this does not fix:** the AppImage runtime mounts the squashfs *before* `AppRun` runs, so the host still needs `libfuse.so.2` to start the file at all. Where that library is missing, the runtime exits with a `libfuse.so.2` error and nothing inside the AppImage can intervene. Install it, or use a native package (the RPM target below; the `.deb` target is tracked in #6010):
+
+- Debian / Ubuntu 24.04+: `sudo apt install libfuse2t64` (pre-24.04: `libfuse2`)
+- Fedora / RHEL: `sudo dnf install fuse-libs`
+- Arch / CachyOS: `sudo pacman -S fuse2`
+- openSUSE: `sudo zypper install libfuse2`
+
+### Native RPM package (`--to rpm`)
+
+A hand-off to someone on a stock Fedora/RHEL/openSUSE desktop should not depend on a FUSE compatibility library, so `tools-pack` can also produce a native RPM:
+
+```bash
+pnpm tools-pack linux build --to rpm --portable
+```
+
+The artifact lands next to the AppImage in `out/linux/namespaces/<namespace>/builder/`. End users install it with their normal package manager:
+
+```bash
+sudo dnf install ./open-design-default.rpm
+```
+
+The RPM installs system-wide (electron-builder's `/opt` layout, desktop entry, icons) and is the artifact to hand to a non-developer. It is **not** part of the `tools-pack linux install/start/stop/uninstall` lifecycle — that lifecycle stays AppImage-scoped because it manages a user-local, namespace-scoped copy. `all` deliberately remains AppImage-only so release lanes never depend on distro packaging tooling.
+
+The `.deb` target is intentionally not included here; the standards-compliant Debian package is tracked in #6010. The RPM build uses electron-builder's bundled `fpm`, which needs host tooling:
+
+- RPM: `rpmbuild` (`rpm-tools` on Arch) and `libcrypt.so.1` for the bundled `fpm` (`libxcrypt-compat` on Arch, `libcrypt1` on Debian/Ubuntu). The RPM config pins fpm's single-threaded `xz` encoder because electron-builder's default `xzmt` encoder can use ~10 GB of RSS and gets OOM-killed on a 16 GB host.
+- `--containerized` provides the RPM toolchain inside the builder image and is the most reproducible path.
 
 ### Optional system tools
 
@@ -152,11 +185,17 @@ Headless mode targets environments without a display (WSL2, headless servers, CI
 - Debian / Ubuntu: `sudo apt install desktop-file-utils gtk-update-icon-cache`
 - Fedora: `sudo dnf install desktop-file-utils gtk-update-icon-cache`
 
-`libfuse2` is needed for FUSE-mounted AppImage launch (the default mode when running an AppImage directly without `--appimage-extract-and-run`). `tools-pack linux start` always uses extract-and-run and bypasses FUSE entirely, so it does not need `libfuse2`. Most modern distros ship `libfuse2` by default; older Ubuntu LTS hosts may need `sudo apt install libfuse2t64` (or `libfuse2` on pre-24.04).
+`libfuse2` is needed for any FUSE-mounted AppImage launch. `AppRun` extracts once into the user cache and re-execs the cached copy, so the slow FUSE reads are paid only on the first launch, but the runtime still refuses to start without `libfuse.so.2`. `tools-pack linux start` uses the same cached path and falls back to `--appimage-extract-and-run` when the runtime cannot mount, so it still works on hosts without FUSE. The native RPM target below is the no-FUSE option for Fedora/RHEL/openSUSE; the `.deb` target is tracked in #6010.
 
 ### Sandbox / chrome-sandbox
 
-Electron 41 on Linux requires `kernel.unprivileged_userns_clone=1` (default on Arch, Ubuntu 24+, Debian 12+) or AppImage's `--no-sandbox` fallback. Most modern distros need no extra setup.
+Chromium's namespace sandbox requires unprivileged user namespaces. `AppRun` probes the capability (`unshare -Ur true`), adds `--no-sandbox` only when the probe fails, and strips the unconditional `--no-sandbox` that desktop-integration tooling passes when the sandbox does work. Override the decision with `OD_LINUX_SANDBOX=on` or `OD_LINUX_SANDBOX=off`.
+
+If launches fail on Ubuntu 24.04+ with a namespace error, either let the probe add the fallback or lift the restriction system-wide:
+
+```bash
+sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+```
 
 ### Distro compatibility target
 
@@ -166,17 +205,17 @@ Verified smoke coverage in this repository currently includes:
 
 - Main PR CI: packaged Linux smoke is intentionally outside the main CI gate.
 - Release lane: Ubuntu GitHub-hosted runner, containerized AppImage build plus Xvfb AppImage runtime smoke when the Linux release lane is enabled.
-- Manual AppImage behavior used to choose `--appimage-extract-and-run`: Ubuntu 24.04 and Arch Linux.
+- Manual AppImage behavior used to validate the extraction cache: Ubuntu 24.04 and Arch Linux.
 
-### Format choice: why AppImage first
+### Format choice: AppImage for release, RPM for hand-off
 
-Linux desktop apps in this space split across formats: VS Code ships `.deb` + `.rpm` + Snap; Discord ships AppImage + `.deb`; Slack ships `.deb` + `.rpm`; Cursor and Obsidian ship AppImage. We start with AppImage because one artifact can cover the widest glibc-compatible target without distro repositories, store packaging, signing infrastructure, or per-format install scripts, and it integrates cleanly with the namespace-scoped install layout. `.deb` / `.rpm` / Snap / Flatpak can land incrementally when user demand justifies the extra release ownership.
+Linux desktop apps in this space split across formats: VS Code ships `.deb` + `.rpm` + Snap; Discord ships AppImage + `.deb`; Slack ships `.deb` + `.rpm`; Cursor and Obsidian ship AppImage. AppImage stays the release-published artifact because one file covers the widest glibc-compatible target without distro repositories, store packaging, signing infrastructure, or per-format install scripts, and it integrates cleanly with the namespace-scoped install layout. The RPM target is available for handing a build to an end user on Fedora/RHEL/openSUSE whose distro does not ship `libfuse2`; the `.deb` target is tracked in #6010. Publishing either native package through the release pipeline (metadata, checksums, feed, signing) is a separate decision.
 
 ### Out of scope (later phases)
 
 - AppImage signing (`--signed`) — deferred pending a GPG key infrastructure decision and a user-facing verification flow design (no ETA).
 - AppImage auto-update feed (`latest-linux.yml`) — the linux electron-builder config has no `publish` block wired, so a generated feed would point users at a feed that never updates. Tracked alongside signing.
-- Additional package formats: `.deb`, `.rpm`, Snap, Flatpak — deferred until there is demand and an owner for per-distro metadata, signing/store/repository plumbing, install/remove hooks, and release validation.
+- Publishing `.rpm` through the release lanes — the build target exists, but release metadata, checksums, signing, repository ownership, and install/remove hook validation do not. The `.deb` target itself is tracked in #6010. Snap and Flatpak remain deferred entirely.
 - Full Linux AppImage and headless packaged smoke remain outside the main PR gate; run the applicable tools-pack validation manually or through a release lane when Linux packaging changes.
 
 `--to dmg` is manual-install DMG output only. Any builder-generated updater metadata such as `latest-mac.yml` or
