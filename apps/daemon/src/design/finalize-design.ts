@@ -42,6 +42,7 @@ import {
 } from '../projects.js';
 import { exportProjectTranscript } from '../transcript-export.js';
 import { googleGenerateContentUrl } from '../integrations/google-models.js';
+import { normalizeOpenAICompletion } from '../integrations/openaiCompletionShape.js';
 
 // Re-export the request/response types so existing daemon-internal
 // imports (and the route handler) keep their referenced names. The
@@ -738,7 +739,10 @@ export function extractDesignMd(
       if (b.type === 'text' && typeof b.text === 'string') out += b.text;
     }
   } else if (protocol === 'openai' || protocol === 'azure') {
-    const choices = (payload as { choices?: unknown }).choices;
+    // Gateways that wrap the completion in a `data` envelope must not read as
+    // "no choices array" — see docs/adr/0002.
+    const completion = normalizeOpenAICompletion(payload) as { choices?: unknown };
+    const choices = completion.choices;
     if (!Array.isArray(choices)) {
       throw new FinalizeUpstreamError(
         502,
