@@ -1,6 +1,10 @@
 import type { Dict } from '../types';
 
 export const it: Dict = {
+  'fileViewer.publishFileContentUnavailable': 'Some uploaded files are missing or failed integrity checks. Please retry.',
+  'fileViewer.publishFileConflict': 'The publication or upload state has changed. Refresh the share panel and try again.',
+  'fileViewer.publishFileWorkspaceLocked': 'This workspace is locked. Restore workspace access before publishing.',
+
   "collab.contentUpdate.available": "Nuova versione cloud",
   "collab.contentUpdate.updating": "Aggiornamento…",
   "collab.contentUpdate.askAgain": "Ripristina gli avvisi di aggiornamento",
@@ -3341,11 +3345,12 @@ export const it: Dict = {
 
   'fileViewer.publishFileRequiresTeam': 'La pubblicazione di un link pubblico richiede uno spazio di lavoro del team. Passa a uno spazio del team o usa Distribuisci per pubblicare questo file.',
   'fileViewer.publishFileRequiresWorkspace': 'Un link di condivisione richiede uno spazio di lavoro con accesso effettuato. Accedi a OpenDesign Cloud oppure condividi questo file tramite un deploy.',
-  'fileViewer.publishFileTooLarge': "Questo progetto supera il limite di condivisione di 20 MiB. Riduci HTML e risorse referenziate, poi riprova.",
+  'fileViewer.publishFileTooLarge': "Content exceeds the server sharing limit. Reduce the file sizes and retry.",
   'fileViewer.publishFileEntryIndexConflict': "“{from}” fa riferimento al file index.html nella radice del progetto, che entra in conflitto con la posizione in cui viene pubblicata la pagina condivisa. Rinomina quel file index.html (ad esempio in {name}) e aggiorna il riferimento, oppure condividi direttamente index.html.",
   'fileViewer.copyFixForAgent': "Copia correzione per l’agente",
   'fileViewer.copyFixForAgentFailed': "Impossibile copiare. Seleziona l’istruzione qui sotto e copiala manualmente.",
   "fileViewer.shareUpdateHint": "Il file ha nuove modifiche. I visitatori vedono ancora la versione precedente.",
+  "fileViewer.shareUpdatingLink": "Aggiornamento link…",
   "fileViewer.shareUpdateLink": "Aggiorna link",
   "fileViewer.signInToUpdate": "Accedi per aggiornare",
   "fileViewer.signInToShare": "Accedi per condividere",

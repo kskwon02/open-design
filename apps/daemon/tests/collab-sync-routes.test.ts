@@ -1967,7 +1967,7 @@ describe('collab sync routes', () => {
     } finally { db.close(); }
   });
 
-  it('S15 rejects generated multi-file share over 20 MiB before upstream upload or publication', async () => {
+  it('S15 delegates a large multi-file share to the cloud capacity policy', async () => {
     const dir = await mkdtemp(path.join(tmpdir(), 'od-share-s15-'));
     tempDirs.push(dir);
     await writeFile(path.join(dir, 'index.html'), '<img src="large.png">');
@@ -1997,16 +1997,17 @@ describe('collab sync routes', () => {
       const over = await api.json(planUrl, { method: 'POST' });
       expect(over.status).toBe(200);
       expect(over.body).toMatchObject({ fileCount: 2, totalBytes: SHARE_MAX_TOTAL_BYTES + 1, exceedsSizeLimit: true });
+      vi.mocked(runVelaResourceCommand).mockRejectedValueOnce(Object.assign(new Error('cloud rejected'), {stderr:'{"error":"too large","status":413,"errorCode":"public_share_too_large"}'}));
       const rejected = await api.json(publishUrl, { method: 'POST' });
       expect(rejected.status).toBe(413);
-      expect(rejected.body).toMatchObject({ error: 'too_large', bytes: SHARE_MAX_TOTAL_BYTES + 1, totalBytes: SHARE_MAX_TOTAL_BYTES + 1, limit: SHARE_MAX_TOTAL_BYTES, plan: over.body });
-      expect(vi.mocked(runVelaResourceCommand)).not.toHaveBeenCalled();
+      expect(rejected.body).toMatchObject({ failure: { upstreamStatus:413, upstreamCode:'public_share_too_large' } });
+      expect(vi.mocked(runVelaResourceCommand)).toHaveBeenCalledOnce();
       expect(share.publicFilePublicationStore.get({ projectId: 'p1', filePath: 'index.html', resourceTeamId: 'ws-personal-1', ownerMemberId: 'wm-personal-1' })).toBeNull();
-      expect(share.readProjectShareState).not.toHaveBeenCalled();
+      expect(share.readProjectShareState).toHaveBeenCalledOnce();
       await writeFile(asset, Buffer.alloc(atLimitAssetBytes, 65));
       const recovered = await api.json(planUrl, { method: 'POST' });
       expect(recovered.body).toMatchObject({ totalBytes: SHARE_MAX_TOTAL_BYTES, exceedsSizeLimit: false });
-      expect(vi.mocked(runVelaResourceCommand)).not.toHaveBeenCalled();
+      expect(vi.mocked(runVelaResourceCommand)).toHaveBeenCalledOnce();
     } finally { db.close(); }
   });
 
@@ -2056,26 +2057,6 @@ describe('collab sync routes', () => {
       expect(prepare).not.toHaveBeenCalled();
       expect(vi.mocked(runVelaResourceCommand)).not.toHaveBeenCalled();
       expect(share.publicFilePublicationStore.get({ projectId: 'p1', filePath: 'page2.html', resourceTeamId: 'ws-personal-1', ownerMemberId: 'wm-personal-1' })).toBeNull();
-    } finally { db.close(); }
-  });
-
-  it('S15 refuses an oversized share before reserving or preparing', async () => {
-    const dir = await mkdtemp(path.join(tmpdir(), 'od-share-s15-order-'));
-    tempDirs.push(dir);
-    await writeFile(path.join(dir, 'index.html'), '<img src="large.png">');
-    await writeFile(path.join(dir, 'large.png'), Buffer.alloc(SHARE_MAX_TOTAL_BYTES + 1, 65));
-    const db = new Database(':memory:');
-    try {
-      const share = await publicShareFixture({ db });
-      const reserve = vi.spyOn(share.sharePublishing.reservations, 'reserve');
-      const prepare = vi.spyOn(share.sharePublishing, 'prepare');
-      const api = await startSyncServer(personalContextProvider(), {
-        resolveProjectDir: () => dir, resolveSharedProject: async () => null, ...share,
-      });
-      const response = await api.json('/api/projects/p1/files/index.html/publish-public', { method: 'POST' });
-      expect(response.status).toBe(413);
-      expect(reserve).not.toHaveBeenCalled();
-      expect(prepare).not.toHaveBeenCalled();
     } finally { db.close(); }
   });
 
@@ -2369,8 +2350,8 @@ describe('collab sync routes', () => {
     expect(current.status).toBe(200);
     expect(current.body.publication?.slug).toBe(fixtureSlug);
     expect(unpublish.status).toBe(200);
-    expect(resolveSharedProject).toHaveBeenCalledTimes(3);
-    expect(ownershipScopes).toHaveLength(3);
+    expect(resolveSharedProject).not.toHaveBeenCalled();
+    expect(ownershipScopes).toHaveLength(0);
     for (const scope of ownershipScopes) {
       expect(scope).toMatchObject({
         workspaceId: 'workspace-a',
@@ -2420,109 +2401,14 @@ describe('collab sync routes', () => {
     expect(runVelaResourceCommand).not.toHaveBeenCalled();
   });
 
-  it('refuses public file operations for a shared project owned by another member without side effects', async () => {
-    const resolveProjectDir = vi.fn(() => {
-      throw new Error('project dir should not be read');
-    });
-    vi.mocked(readVelaControlApiContext).mockReturnValue({
-      profile: 'test',
-      apiUrl: 'https://hub.example.test',
-      controlKey: 'ctrl-test',
-      user: null,
-      configMtimeMs: null,
-    });
-    const api = await startSyncServer(fixedShareContextProvider(true), {
-      resolveProjectDir,
-      resolveSharedProject: async () => ({
-        projectId: 'p1',
-        ownerMemberId: 'wm-owner',
-        sharedAt: new Date(1).toISOString(),
-        name: 'Owner Project',
-      }),
-    });
-
-    const publish = await api.json('/api/projects/p1/files/index.html/publish-public', {
-      method: 'POST',
-    });
-    const current = await api.json('/api/projects/p1/files/index.html/publish-public');
-    const unpublish = await api.json('/api/projects/p1/files/index.html/publish-public', {
-      method: 'DELETE',
-      body: { slug: 'other-member-slug' },
-    });
-
-    for (const res of [publish, current, unpublish]) {
-      expect(res.status).toBe(403);
-      expect(res.body.error).toBe('WORKSPACE_PROJECT_PUBLISH_DENIED');
-    }
+  it('refuses reading another local author without consulting workspace visibility or cloud ownership prechecks', async () => {
+    const resolveProjectDir = vi.fn(() => { throw new Error('must not read local bytes'); });
+    const resolveSharedProject = vi.fn(async () => { throw new Error('must not precheck'); });
+    const api = await startSyncServer(fixedShareContextProvider(false), {resolveProjectDir,resolveSharedProject,resolveLocalPublicShareOwner:()=> 'other-member'});
+    const response = await api.json('/api/projects/p1/files/index.html/publish-public',{method:'POST'});
+    expect(response.status).toBe(403);
     expect(resolveProjectDir).not.toHaveBeenCalled();
-    expect(runVelaResourceCommand).not.toHaveBeenCalled();
-  });
-
-  it('fails public file publish and unpublish when ownership lookup fails', async () => {
-    const resolveProjectDir = vi.fn(() => {
-      throw new Error('project dir should not be read');
-    });
-    vi.mocked(readVelaControlApiContext).mockReturnValue({
-      profile: 'test',
-      apiUrl: 'https://hub.example.test',
-      controlKey: 'ctrl-test',
-      user: null,
-      configMtimeMs: null,
-    });
-    const api = await startSyncServer(fixedShareContextProvider(true), {
-      resolveProjectDir,
-      resolveSharedProject: async () => {
-        throw new Error('catalog unavailable');
-      },
-    });
-
-    const publish = await api.json('/api/projects/p1/files/index.html/publish-public', {
-      method: 'POST',
-    });
-    const unpublish = await api.json('/api/projects/p1/files/index.html/publish-public', {
-      method: 'DELETE',
-      body: { slug: 'public-slug' },
-    });
-
-    expect(publish.status).toBe(503);
-    expect(publish.body.error).toBe('WORKSPACE_PROJECT_OWNERSHIP_UNAVAILABLE');
-    expect(unpublish.status).toBe(503);
-    expect(unpublish.body.error).toBe('WORKSPACE_PROJECT_OWNERSHIP_UNAVAILABLE');
-    expect(resolveProjectDir).not.toHaveBeenCalled();
-    expect(runVelaResourceCommand).not.toHaveBeenCalled();
-  });
-
-  it.skipIf(process.platform === 'win32' || process.getuid?.() === 0)('OPEND-3644 refuses unreadable dependencies before cloud writes and preserves the old publication', async () => {
-    const dir = await mkdtemp(path.join(tmpdir(), 'od-unreadable-share-'));
-    tempDirs.push(dir);
-    await writeFile(path.join(dir, 'index.html'), '<link rel="stylesheet" href="style.css"><h1>A</h1>');
-    await writeFile(path.join(dir, 'style.css'), 'body { color: green }');
-    vi.mocked(runVelaResourceCommand).mockResolvedValue(JSON.stringify({ id: 'v1', version: 1 }));
-    const fixture = await publicShareFixture();
-    const api = await startSyncServer(fixedShareContextProvider(true), {
-      ...fixture, resolveProjectDir: () => dir, resolveSharedProject: async () => null,
-    });
-    const endpoint = '/api/projects/p1/files/index.html/';
-    const first = await api.json(endpoint + 'publish-public', { method: 'POST' });
-    expect(first.status).toBe(200);
-    const before = await api.json(endpoint + 'publish-public');
-    vi.mocked(runVelaResourceCommand).mockClear();
-    vi.mocked(publishReservedVelaShareVersion).mockClear();
-    await writeFile(path.join(dir, 'index.html'), '<link rel="stylesheet" href="style.css"><h1>B</h1>');
-    await chmod(path.join(dir, 'style.css'), 0);
-    try {
-      for (const action of ['share-plan', 'publish-public']) {
-        const refused = await api.json(endpoint + action, { method: 'POST' });
-        expect(refused.status).toBe(400);
-        expect(refused.body).toEqual({ error: 'FILE_UNAVAILABLE' });
-      }
-      expect(runVelaResourceCommand).not.toHaveBeenCalled();
-      expect(publishReservedVelaShareVersion).not.toHaveBeenCalled();
-      const after = await api.json(endpoint + 'publish-public');
-      expect(after.body.publication).toEqual(before.body.publication);
-    } finally { await chmod(path.join(dir, 'style.css'), 0o644); }
-    expect((await api.json(endpoint + 'share-plan', { method: 'POST' })).body.fileCount).toBe(2);
-    expect((await api.json(endpoint + 'publish-public', { method: 'POST' })).status).toBe(200);
+    expect(resolveSharedProject).not.toHaveBeenCalled();
   });
 
   it('does not upload when Viewer preparation fails', async () => {
@@ -2702,8 +2588,8 @@ describe('collab sync routes', () => {
     try {
       await Promise.race([reached.promise, stop.then(() => { throw new Error('stop ended before barrier'); })]);
       // Explicit external witness replacement, not an ordinary update changing the stable alias.
-      fixture.readProjectShareState.mockResolvedValue({ projectId: 'p1', bindingExists: true, hasEverShared: true, publications: [{ sourceFilePath: 'index.html', sourceFileId: fixture.sharePublishing.sourceFileId!({ projectId: 'p1', filePath: 'index.html', resourceTeamId: 'team-1', ownerMemberId: 'wm-1' }), slug, status: 'active' }] });
-      fixture.publicFilePublicationStore.set({ resourceTeamId: 'team-1', ownerMemberId: 'wm-1', projectId: 'p1', filePath: 'index.html' }, newer);
+      fixture.readProjectShareState.mockResolvedValue({ projectId: 'p1', bindingExists: true, hasEverShared: true, publications: [{ sourceFilePath: 'index.html', sourceFileId: fixture.sharePublishing.sourceFileId!({ projectId: 'p1', filePath: 'index.html', resourceTeamId: 'ws-1', ownerMemberId: 'wm-1' }), slug, status: 'active' }] });
+      fixture.publicFilePublicationStore.set({ resourceTeamId: 'ws-1', ownerMemberId: 'wm-1', projectId: 'p1', filePath: 'index.html' }, newer);
     } finally { release.resolve(); }
     expect((await stop).status).toBe(200);
     expect((await api.json(endpoint)).body.publication).toEqual(newer);

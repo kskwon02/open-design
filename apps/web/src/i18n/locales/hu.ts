@@ -1,6 +1,10 @@
 import type { Dict } from '../types';
 
 export const hu: Dict = {
+  'fileViewer.publishFileContentUnavailable': 'Some uploaded files are missing or failed integrity checks. Please retry.',
+  'fileViewer.publishFileConflict': 'The publication or upload state has changed. Refresh the share panel and try again.',
+  'fileViewer.publishFileWorkspaceLocked': 'This workspace is locked. Restore workspace access before publishing.',
+
   "collab.contentUpdate.available": "Új felhőverzió",
   "collab.contentUpdate.updating": "Frissítés…",
   "collab.contentUpdate.askAgain": "Frissítési értesítések visszaállítása",
@@ -3341,11 +3345,12 @@ export const hu: Dict = {
 
   'fileViewer.publishFileRequiresTeam': 'A nyilvános hivatkozás közzétételéhez csapatmunkaterület szükséges. Válts csapatmunkaterületre, vagy tedd közzé a fájlt a Közzététel funkcióval.',
   'fileViewer.publishFileRequiresWorkspace': 'A megosztási linkhez bejelentkezett munkaterület szükséges. Jelentkezz be az OpenDesign Cloudba, vagy oszd meg a fájlt telepítéssel.',
-  'fileViewer.publishFileTooLarge': "A projekt meghaladja a 20 MiB megosztási korlátot. Csökkentsd a HTML és a hivatkozott erőforrások méretét, majd próbáld újra.",
+  'fileViewer.publishFileTooLarge': "Content exceeds the server sharing limit. Reduce the file sizes and retry.",
   'fileViewer.publishFileEntryIndexConflict': "A(z) „{from}” a projekt gyökérkönyvtárában lévő index.html fájlra hivatkozik, amely ütközik a megosztott oldal közzétételi helyével. Nevezd át ezt az index.html fájlt (például erre: {name}), és frissítsd a hivatkozást, vagy magát az index.html fájlt oszd meg.",
   'fileViewer.copyFixForAgent': "Javítás másolása az ügynöknek",
   'fileViewer.copyFixForAgentFailed': "A másolás nem sikerült. Jelöld ki az alábbi utasítást, és másold ki kézzel.",
   "fileViewer.shareUpdateHint": "A fájlban új módosítások vannak. A látogatók még az előző verziót látják.",
+  "fileViewer.shareUpdatingLink": "Hivatkozás frissítése…",
   "fileViewer.shareUpdateLink": "Hivatkozás frissítése",
   "fileViewer.signInToUpdate": "Bejelentkezés a frissítéshez",
   "fileViewer.signInToShare": "Bejelentkezés a megosztáshoz",

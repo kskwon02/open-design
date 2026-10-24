@@ -1,6 +1,10 @@
 import type { Dict } from '../types';
 
 export const ru: Dict = {
+  'fileViewer.publishFileContentUnavailable': 'Some uploaded files are missing or failed integrity checks. Please retry.',
+  'fileViewer.publishFileConflict': 'The publication or upload state has changed. Refresh the share panel and try again.',
+  'fileViewer.publishFileWorkspaceLocked': 'This workspace is locked. Restore workspace access before publishing.',
+
   "collab.contentUpdate.available": "Новая версия в облаке",
   "collab.contentUpdate.updating": "Обновление…",
   "collab.contentUpdate.askAgain": "Возобновить уведомления об обновлениях",
@@ -3341,11 +3345,12 @@ export const ru: Dict = {
 
   'fileViewer.publishFileRequiresTeam': 'Для публикации общедоступной ссылки нужно командное рабочее пространство. Переключитесь на командное пространство или опубликуйте файл через «Развернуть».',
   'fileViewer.publishFileRequiresWorkspace': 'Для ссылки нужен вход в рабочее пространство. Войдите в OpenDesign Cloud или поделитесь файлом через деплой.',
-  'fileViewer.publishFileTooLarge': "Проект превышает лимит публикации 20 MiB. Уменьшите размер HTML и связанных ресурсов и повторите попытку.",
+  'fileViewer.publishFileTooLarge': "Content exceeds the server sharing limit. Reduce the file sizes and retry.",
   'fileViewer.publishFileEntryIndexConflict': "«{from}» ссылается на index.html в корне проекта, который конфликтует с адресом публикации общей страницы. Переименуйте этот index.html (например, в {name}) и обновите ссылку или поделитесь самим index.html.",
   'fileViewer.copyFixForAgent': "Скопировать исправление для агента",
   'fileViewer.copyFixForAgentFailed': "Не удалось скопировать. Выделите инструкцию ниже и скопируйте её вручную.",
   "fileViewer.shareUpdateHint": "В файле есть новые изменения. Посетители пока видят предыдущую версию.",
+  "fileViewer.shareUpdatingLink": "Обновление ссылки…",
   "fileViewer.shareUpdateLink": "Обновить ссылку",
   "fileViewer.signInToUpdate": "Войти и обновить",
   "fileViewer.signInToShare": "Войти и поделиться",

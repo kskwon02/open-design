@@ -43,7 +43,7 @@ function publishedRoute(options: { freshness?: 'outdated' | 'current' | 'unknown
   let failures = options.failures ?? 0;
   let readFails = false;
   let deferReads = false;
-  let resolveDeferredRead: ((response: Response) => void) | null = null;
+  const deferredReads: Array<(response: Response) => void> = [];
   const fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     if (url.endsWith('/api/integrations/vela/status')) return new Response(JSON.stringify({ loggedIn: Boolean(options.amrAuthenticated), loginInFlight: false, profile: 'prod', user: options.amrAuthenticated ? { id: 'owner' } : null, configPath: '/x' }), { status: 200 });
@@ -61,7 +61,7 @@ function publishedRoute(options: { freshness?: 'outdated' | 'current' | 'unknown
       }
       if (readFails) return new Response(JSON.stringify({ error: 'SHARE_STATE_UNAVAILABLE' }), { status: 503 });
       if (options.noPublication) return new Response(JSON.stringify({ publication: null, status: 'none', freshness: 'unknown' }), { status: 200 });
-      if (deferReads) return await new Promise<Response>(resolve => { resolveDeferredRead = resolve; });
+      if (deferReads) return await new Promise<Response>(resolve => { deferredReads.push(resolve); });
       return new Response(JSON.stringify({ publication, status: fileStatus, freshness }), { status: 200 });
     }
     if (url.includes('/social-share')) return new Response('{}', { status: 503 });
@@ -74,7 +74,9 @@ function publishedRoute(options: { freshness?: 'outdated' | 'current' | 'unknown
     setFreshness: (next: typeof freshness) => { freshness = next; },
     setFileStatus: (next: typeof fileStatus) => { fileStatus = next; },
     setReadDeferred: (next: boolean) => { deferReads = next; },
-    resolveDeferredRead: () => resolveDeferredRead?.(new Response(JSON.stringify({ publication, status: 'active', freshness }), { status: 200 })),
+    resolveDeferredRead: () => {
+      for (const resolve of deferredReads.splice(0)) resolve(Response.json({ publication, status: fileStatus, freshness }));
+    },
   };
 }
 function posts(fetch: ReturnType<typeof vi.fn>) {
@@ -357,7 +359,7 @@ it.each(['push', 'file'] as const)('S6-ERR %s failure preserves old link, never 
   await waitFor(() => expect(posts(fetch)).toHaveLength(1));
   expect(screen.getByText(publication.url)).toBeTruthy();
   expect(screen.getByRole('button', { name: /copy share link/i })).toBeEnabled();
-  expect((await screen.findByText(/Update failed/i)).closest('[role="alert"]')).toBeTruthy();
+  expect((await screen.findByText(failureStage === 'push' ? /Connection failed or timed out/i : /Could not create the share link/i)).closest('[role="status"]')).toBeTruthy();
   await act(async () => { await new Promise(resolve => setTimeout(resolve, 10)); });
   expect(posts(fetch)).toHaveLength(1);
   await act(async () => { fireEvent.click(screen.getByRole('button', { name: /^retry$/i })); });
@@ -372,7 +374,7 @@ it.each(['snapshot', 'manual'] as const)('S6-ERR %s remote outcome is uncertain;
   await act(async () => { fireEvent.click(screen.getByRole('button', { name: /update link/i })); });
   await waitFor(() => expect(posts(fetch)).toHaveLength(1));
   expect(screen.getByText(publication.url)).toBeTruthy();
-  expect((await screen.findByText(/Update outcome unknown/i)).closest('[role="alert"]')).toBeTruthy();
+  expect((await screen.findByText(/share result could not be confirmed/i)).closest('[role="status"]')).toBeTruthy();
   expect(screen.queryByText(/previous version is still available/i)).toBeNull();
   expect(screen.queryByRole('button', { name: /^retry$/i })).toBeNull();
   expect(copy).not.toHaveBeenCalled();

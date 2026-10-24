@@ -92,6 +92,10 @@ export function canPublishPublicFile(
 /** Dict keys this module may return; keeps the i18n contract explicit. */
 export type PublicFilePublishFailureKey =
   | 'fileViewer.publishFileRequiresWorkspace'
+  | 'fileViewer.publishFileTooLarge'
+  | 'fileViewer.publishFileContentUnavailable'
+  | 'fileViewer.publishFileConflict'
+  | 'fileViewer.publishFileWorkspaceLocked'
   | 'fileViewer.publishFileFailed'
   | 'fileViewer.publishFileConnectionFailed'
   | 'fileViewer.publishFileSignInRequired'
@@ -106,10 +110,13 @@ export type PublicFilePublishFailureKey =
  * Workspace identity still asks for sign-in, not a switch to a team.
  */
 export function publicFilePublishFailureKey(error: unknown): PublicFilePublishFailureKey {
+  if (error instanceof PublicFilePublishError && error.code === PUBLIC_FILE_MANUAL_REVOKE_REQUIRED) return 'fileViewer.publishFileUnconfirmed';
   const message = error instanceof Error ? error.message : String(error ?? '');
   if (message.includes('WORKSPACE_IDENTITY_REQUIRED')) return 'fileViewer.publishFileRequiresWorkspace';
   const failure = parseApiFailureDetail(error && typeof error === 'object' && 'failure' in error ? error.failure : undefined);
   if (!failure) return 'fileViewer.publishFileFailed';
+  if ((failure.stage === 'snapshot' || failure.stage === 'persist')
+    && (failure.reason === 'network' || failure.reason === 'timeout')) return 'fileViewer.publishFileUnconfirmed';
   switch (failure.reason) {
     case 'network':
     case 'timeout': return 'fileViewer.publishFileConnectionFailed';
@@ -117,6 +124,10 @@ export function publicFilePublishFailureKey(error: unknown): PublicFilePublishFa
     case 'cli_missing':
     case 'session_setup': return 'fileViewer.publishFileLocalSessionFailed';
     case 'upstream_http':
+      if (failure.upstreamCode === 'public_share_too_large' || failure.upstreamStatus === 413) return 'fileViewer.publishFileTooLarge';
+      if (['public_share_content_unavailable','blob_not_uploaded','blob_size_mismatch','blob_digest_mismatch','manifest_blobs_missing'].includes(failure.upstreamCode ?? '')) return 'fileViewer.publishFileContentUnavailable';
+      if (['public_upload_conflict','public_upload_expired','share_source_conflict','SHARE_GENERATION_MISMATCH','share_binding_stopped'].includes(failure.upstreamCode ?? '')) return 'fileViewer.publishFileConflict';
+      if (['workspace_subscription_locked','workspace_locked'].includes(failure.upstreamCode ?? '')) return 'fileViewer.publishFileWorkspaceLocked';
       if (failure.upstreamStatus === 401) return 'fileViewer.publishFileSignInRequired';
       if (failure.upstreamStatus === 403) return 'fileViewer.publishFileAccessDenied';
       return 'fileViewer.publishFileServiceRejected';

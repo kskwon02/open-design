@@ -1,6 +1,10 @@
 import type { Dict } from '../types';
 
 export const ar: Dict = {
+  'fileViewer.publishFileContentUnavailable': 'Some uploaded files are missing or failed integrity checks. Please retry.',
+  'fileViewer.publishFileConflict': 'The publication or upload state has changed. Refresh the share panel and try again.',
+  'fileViewer.publishFileWorkspaceLocked': 'This workspace is locked. Restore workspace access before publishing.',
+
   "collab.contentUpdate.available": "يتوفر إصدار سحابي جديد",
   "collab.contentUpdate.updating": "جارٍ التحديث…",
   "collab.contentUpdate.askAgain": "استعادة تنبيهات التحديث",
@@ -3352,11 +3356,12 @@ export const ar: Dict = {
 
   'fileViewer.publishFileRequiresTeam': 'يتطلب نشر رابط عام مساحة عمل جماعية. بدّل إلى مساحة عمل جماعية، أو استخدم النشر لإتاحة هذا الملف.',
   'fileViewer.publishFileRequiresWorkspace': 'يتطلب رابط المشاركة مساحة عمل مسجّلة الدخول. سجّل الدخول إلى OpenDesign Cloud أو شارك هذا الملف عبر النشر.',
-  'fileViewer.publishFileTooLarge': "يتجاوز هذا المشروع حد المشاركة البالغ 20 MiB. قلّل حجم HTML والموارد المشار إليها، ثم أعد المحاولة.",
+  'fileViewer.publishFileTooLarge': "Content exceeds the server sharing limit. Reduce the file sizes and retry.",
   'fileViewer.publishFileEntryIndexConflict': "يشير «{from}» إلى ملف index.html في جذر المشروع، وهو يتعارض مع موضع نشر الصفحة المشارَكة. أعد تسمية ملف index.html هذا (مثلًا إلى {name}) وحدّث المرجع، أو شارك index.html نفسه.",
   'fileViewer.copyFixForAgent': "نسخ الإصلاح للوكيل",
   'fileViewer.copyFixForAgentFailed': "تعذّر النسخ. حدّد التعليمات أدناه وانسخها يدويًا.",
   "fileViewer.shareUpdateHint": "يحتوي الملف على تغييرات جديدة. لا يزال الزوار يرون الإصدار السابق.",
+  "fileViewer.shareUpdatingLink": "جارٍ تحديث الرابط…",
   "fileViewer.shareUpdateLink": "تحديث الرابط",
   "fileViewer.signInToUpdate": "سجّل الدخول للتحديث",
   "fileViewer.signInToShare": "سجّل الدخول للمشاركة",

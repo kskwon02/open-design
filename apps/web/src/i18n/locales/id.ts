@@ -1,6 +1,10 @@
 import type { Dict } from '../types';
 
 export const id: Dict = {
+  'fileViewer.publishFileContentUnavailable': 'Some uploaded files are missing or failed integrity checks. Please retry.',
+  'fileViewer.publishFileConflict': 'The publication or upload state has changed. Refresh the share panel and try again.',
+  'fileViewer.publishFileWorkspaceLocked': 'This workspace is locked. Restore workspace access before publishing.',
+
   "collab.contentUpdate.available": "Versi cloud baru tersedia",
   "collab.contentUpdate.updating": "Memperbarui…",
   "collab.contentUpdate.askAgain": "Pulihkan pemberitahuan pembaruan",
@@ -3341,11 +3345,12 @@ export const id: Dict = {
 
   'fileViewer.publishFileRequiresTeam': 'Menerbitkan tautan publik memerlukan ruang kerja tim. Beralihlah ke ruang kerja tim, atau gunakan Deploy untuk menerbitkan berkas ini.',
   'fileViewer.publishFileRequiresWorkspace': 'Tautan berbagi memerlukan workspace yang masuk. Masuk ke OpenDesign Cloud atau bagikan file ini lewat deploy.',
-  'fileViewer.publishFileTooLarge': "Proyek ini melebihi batas berbagi 20 MiB. Kurangi ukuran HTML dan sumber daya yang dirujuk, lalu coba lagi.",
+  'fileViewer.publishFileTooLarge': "Content exceeds the server sharing limit. Reduce the file sizes and retry.",
   'fileViewer.publishFileEntryIndexConflict': "“{from}” merujuk ke index.html di root proyek, yang bertabrakan dengan lokasi halaman yang dibagikan dipublikasikan. Ganti nama index.html tersebut (misalnya menjadi {name}) dan perbarui rujukannya, atau bagikan index.html itu sendiri.",
   'fileViewer.copyFixForAgent': "Salin perbaikan untuk agen",
   'fileViewer.copyFixForAgentFailed': "Gagal menyalin. Pilih instruksi di bawah dan salin secara manual.",
   "fileViewer.shareUpdateHint": "File memiliki perubahan baru. Pengunjung masih melihat versi sebelumnya.",
+  "fileViewer.shareUpdatingLink": "Memperbarui tautan…",
   "fileViewer.shareUpdateLink": "Perbarui tautan",
   "fileViewer.signInToUpdate": "Masuk untuk memperbarui",
   "fileViewer.signInToShare": "Masuk untuk berbagi",

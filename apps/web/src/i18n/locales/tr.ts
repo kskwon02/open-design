@@ -1,6 +1,10 @@
 import type { Dict } from '../types';
 
 export const tr: Dict = {
+  'fileViewer.publishFileContentUnavailable': 'Some uploaded files are missing or failed integrity checks. Please retry.',
+  'fileViewer.publishFileConflict': 'The publication or upload state has changed. Refresh the share panel and try again.',
+  'fileViewer.publishFileWorkspaceLocked': 'This workspace is locked. Restore workspace access before publishing.',
+
   "collab.contentUpdate.available": "Bulutta yeni sürüm var",
   "collab.contentUpdate.updating": "Güncelleniyor…",
   "collab.contentUpdate.askAgain": "Güncelleme bildirimlerini geri aç",
@@ -3341,11 +3345,12 @@ export const tr: Dict = {
 
   'fileViewer.publishFileRequiresTeam': 'Herkese açık bağlantı yayınlamak için ekip çalışma alanı gerekir. Bir ekip çalışma alanına geçin veya bu dosyayı Dağıt ile yayınlayın.',
   'fileViewer.publishFileRequiresWorkspace': 'Paylaşım bağlantısı için oturum açılmış bir çalışma alanı gerekir. OpenDesign Cloud\'da oturum açın veya bu dosyayı bir dağıtımla paylaşın.',
-  'fileViewer.publishFileTooLarge': "Bu proje 20 MiB paylaşım sınırını aşıyor. HTML ve başvurulan kaynakların boyutunu küçültüp yeniden deneyin.",
+  'fileViewer.publishFileTooLarge': "Content exceeds the server sharing limit. Reduce the file sizes and retry.",
   'fileViewer.publishFileEntryIndexConflict': "“{from}”, projenin kök dizinindeki index.html dosyasına başvuruyor ve bu dosya paylaşılan sayfanın yayınlandığı konumla çakışıyor. Bu index.html dosyasını yeniden adlandırın (örneğin {name}) ve başvuruyu güncelleyin ya da doğrudan index.html dosyasını paylaşın.",
   'fileViewer.copyFixForAgent': "Düzeltmeyi ajan için kopyala",
   'fileViewer.copyFixForAgentFailed': "Kopyalanamadı. Aşağıdaki talimatı seçip elle kopyalayın.",
   "fileViewer.shareUpdateHint": "Dosyada yeni değişiklikler var. Ziyaretçiler hâlâ önceki sürümü görüyor.",
+  "fileViewer.shareUpdatingLink": "Bağlantı güncelleniyor…",
   "fileViewer.shareUpdateLink": "Bağlantıyı güncelle",
   "fileViewer.signInToUpdate": "Giriş yapıp güncelle",
   "fileViewer.signInToShare": "Giriş yapıp paylaş",
